@@ -1,4 +1,4 @@
-package com.schemascope.schemascope;
+package com.schemascope;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

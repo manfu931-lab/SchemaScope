@@ -1,4 +1,4 @@
-package com.schemascope.schemascope;
+package com.schemascope;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

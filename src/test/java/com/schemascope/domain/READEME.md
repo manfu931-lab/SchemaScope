@@ -1,0 +1,1 @@
+AnalysisDomainTest.java 测试这一步新建的对象是否正确
