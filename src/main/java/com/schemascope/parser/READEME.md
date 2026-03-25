@@ -1,0 +1,1 @@
+SchemaFileReader.java 真正读取 .sql 文件，并解析出表和列

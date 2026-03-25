@@ -1,14 +1,5 @@
 package com.schemascope.domain;
-/*
-定义“用户发起一次分析时，需要告诉系统什么”。
 
-在第一版里，我们先不要做太复杂。
-先假设用户是通过接口发来这些信息：
-
-项目名称
-项目路径
-旧 schema 文件路径
-新 schema 文件路径 */
 public class AnalysisRequest {
 
     private String projectName;
@@ -16,14 +7,36 @@ public class AnalysisRequest {
     private String oldSchemaPath;
     private String newSchemaPath;
 
+    private String changeType;
+    private String tableName;
+    private String columnName;
+    private String oldType;
+    private String newType;
+    private String sourceFile;
+
     public AnalysisRequest() {
     }
 
-    public AnalysisRequest(String projectName, String projectPath, String oldSchemaPath, String newSchemaPath) {
+    public AnalysisRequest(String projectName,
+                           String projectPath,
+                           String oldSchemaPath,
+                           String newSchemaPath,
+                           String changeType,
+                           String tableName,
+                           String columnName,
+                           String oldType,
+                           String newType,
+                           String sourceFile) {
         this.projectName = projectName;
         this.projectPath = projectPath;
         this.oldSchemaPath = oldSchemaPath;
         this.newSchemaPath = newSchemaPath;
+        this.changeType = changeType;
+        this.tableName = tableName;
+        this.columnName = columnName;
+        this.oldType = oldType;
+        this.newType = newType;
+        this.sourceFile = sourceFile;
     }
 
     public String getProjectName() {
@@ -58,6 +71,54 @@ public class AnalysisRequest {
         this.newSchemaPath = newSchemaPath;
     }
 
+    public String getChangeType() {
+        return changeType;
+    }
+
+    public void setChangeType(String changeType) {
+        this.changeType = changeType;
+    }
+
+    public String getTableName() {
+        return tableName;
+    }
+
+    public void setTableName(String tableName) {
+        this.tableName = tableName;
+    }
+
+    public String getColumnName() {
+        return columnName;
+    }
+
+    public void setColumnName(String columnName) {
+        this.columnName = columnName;
+    }
+
+    public String getOldType() {
+        return oldType;
+    }
+
+    public void setOldType(String oldType) {
+        this.oldType = oldType;
+    }
+
+    public String getNewType() {
+        return newType;
+    }
+
+    public void setNewType(String newType) {
+        this.newType = newType;
+    }
+
+    public String getSourceFile() {
+        return sourceFile;
+    }
+
+    public void setSourceFile(String sourceFile) {
+        this.sourceFile = sourceFile;
+    }
+
     @Override
     public String toString() {
         return "AnalysisRequest{" +
@@ -65,6 +126,12 @@ public class AnalysisRequest {
                 ", projectPath='" + projectPath + '\'' +
                 ", oldSchemaPath='" + oldSchemaPath + '\'' +
                 ", newSchemaPath='" + newSchemaPath + '\'' +
+                ", changeType='" + changeType + '\'' +
+                ", tableName='" + tableName + '\'' +
+                ", columnName='" + columnName + '\'' +
+                ", oldType='" + oldType + '\'' +
+                ", newType='" + newType + '\'' +
+                ", sourceFile='" + sourceFile + '\'' +
                 '}';
     }
 }

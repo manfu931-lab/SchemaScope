@@ -1,0 +1,1 @@
+SchemaFileReaderTest.java 测试解析器是否真的能读出表和列

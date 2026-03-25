@@ -3,3 +3,6 @@ SchemaChange.java 定义“一次 schema 变化”长什么样
 AnalysisRequest.java 表示一次分析任务的输入参数
 RiskLevel.java 定义风险等级
 ImpactResult.java 表示一条分析结果
+SchemaColumn.java 表示一个列
+SchemaTable.java 表示一个表
+ParsedSchema.java 表示“一个 schema 文件解析后的结果”

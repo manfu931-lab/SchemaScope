@@ -1,0 +1,1 @@
+SchemaDiffServiceTest.java 测试 diff 是否能找出删列和改类型
