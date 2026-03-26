@@ -12,10 +12,11 @@ public class ImpactResultRanker {
 
     public List<ImpactResult> rank(List<ImpactResult> results, int limit) {
         return results.stream()
-                .sorted(Comparator
-                        .comparing(ImpactResult::getRiskScore).reversed()
-                        .thenComparing(ImpactResult::getConfidence).reversed()
-                        .thenComparing(ImpactResult::getAffectedObject))
+                .sorted(
+                        Comparator.comparingDouble(ImpactResult::getRiskScore).reversed()
+                                .thenComparing(Comparator.comparingDouble(ImpactResult::getConfidence).reversed())
+                                .thenComparing(ImpactResult::getAffectedObject)
+                )
                 .limit(limit)
                 .collect(Collectors.toList());
     }

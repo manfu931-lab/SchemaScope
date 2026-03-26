@@ -11,13 +11,12 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Paths;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class RealSchemaAnalysisServiceTest {
+class ExternalSchemaToProjectAnalysisTest {
 
     @Test
-    void shouldAnalyzeFromRealSchemaFiles() {
+    void shouldAnalyzePetclinicSchemasAgainstPetclinicProject() {
         MockAnalysisService service = new MockAnalysisService(
                 new SimpleImpactAnalyzer(),
                 new SchemaChangeFactory(),
@@ -29,13 +28,12 @@ class RealSchemaAnalysisServiceTest {
                 new ImpactResultRanker()
         );
 
-        String oldPath = Paths.get("src", "test", "resources", "schema", "schema_v1.sql").toString();
-        String newPath = Paths.get("src", "test", "resources", "schema", "schema_v2.sql").toString();
-        String currentProjectRoot = Paths.get(".").toAbsolutePath().normalize().toString();
+        String oldPath = Paths.get("src", "test", "resources", "schema", "petclinic_schema_v1.sql").toString();
+        String newPath = Paths.get("src", "test", "resources", "schema", "petclinic_schema_v2.sql").toString();
 
         AnalysisRequest request = new AnalysisRequest(
-                "schemascope-self",
-                currentProjectRoot,
+                "spring-petclinic",
+                "D:/download/SchemaScope/benchmark/spring-petclinic",
                 oldPath,
                 newPath,
                 null,
@@ -50,15 +48,17 @@ class RealSchemaAnalysisServiceTest {
 
         System.out.println(results);
 
-        assertFalse(results.isEmpty());
+        boolean hasOwner = results.stream()
+                .anyMatch(r -> r.getAffectedObject().equals("Owner"));
 
-        boolean containsDropColumnImpact = results.stream()
-                .anyMatch(r -> r.getChangeId().contains("drop-column-orders-status"));
+        boolean hasOwnerController = results.stream()
+                .anyMatch(r -> r.getAffectedObject().equals("OwnerController"));
 
-        boolean containsAlterTypeImpact = results.stream()
-                .anyMatch(r -> r.getChangeId().contains("alter-column-type-users-email"));
+        boolean hasPet = results.stream()
+                .anyMatch(r -> r.getAffectedObject().equals("Pet"));
 
-        assertTrue(containsDropColumnImpact);
-        assertTrue(containsAlterTypeImpact);
+        assertTrue(hasOwner);
+        assertTrue(hasOwnerController);
+        assertTrue(hasPet);
     }
 }

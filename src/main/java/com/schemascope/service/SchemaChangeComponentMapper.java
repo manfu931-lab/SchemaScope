@@ -1,33 +1,5 @@
 package com.schemascope.service;
-/*这是第一版的“表名词干提取”。
 
-例如：
-
-owners → owner
-users → user
-categories → category
-
-为什么要这样做？
-因为数据库表经常是复数，而 Java 类通常是单数。
-
-className.contains(tableToken)
-
-这是第一版最核心的匹配规则。
-
-例如：
-
-表 owners → token owner
-命中：
-Owner
-OwnerController
-scoreByType(...)
-
-即使都命中了 owner，不同类型的类相关性也不一样：
-
-Owner（ENTITY）更高
-OwnerController（CONTROLLER）稍低
-
-所以我们给不同类型不同分数。 */
 import com.schemascope.domain.ComponentImpactCandidate;
 import com.schemascope.domain.JavaComponent;
 import com.schemascope.domain.JavaComponentType;
@@ -46,14 +18,44 @@ public class SchemaChangeComponentMapper {
         List<ComponentImpactCandidate> candidates = new ArrayList<>();
 
         String tableToken = normalizeTableToken(change.getTableName());
+        String columnToken = normalizeColumnToken(change.getColumnName());
 
         for (JavaComponent component : scanResult.getComponents()) {
             String className = component.getClassName().toLowerCase();
+            String filePath = component.getFilePath().toLowerCase();
 
-            if (className.contains(tableToken)) {
-                double score = scoreByType(component.getComponentType());
-                String reason = "class name matches table token '" + tableToken + "'";
-                candidates.add(new ComponentImpactCandidate(component, score, reason));
+            double score = 0.0;
+            List<String> reasons = new ArrayList<>();
+
+            if (!tableToken.isBlank() && className.contains(tableToken)) {
+                score += 0.60;
+                reasons.add("class name matches table token '" + tableToken + "'");
+            }
+
+            if (!tableToken.isBlank() && filePath.contains(tableToken)) {
+                score += 0.15;
+                reasons.add("file path matches table token '" + tableToken + "'");
+            }
+
+            double typeBonus = scoreByType(component.getComponentType());
+            if (typeBonus > 0) {
+                score += typeBonus;
+                reasons.add("component type bonus: " + component.getComponentType());
+            }
+
+            if (!columnToken.isBlank() && (className.contains(columnToken) || filePath.contains(columnToken))) {
+                score += 0.05;
+                reasons.add("column token hint '" + columnToken + "'");
+            }
+
+            score = Math.min(score, 1.0);
+
+            if (score >= 0.70) {
+                candidates.add(new ComponentImpactCandidate(
+                        component,
+                        score,
+                        String.join("; ", reasons)
+                ));
             }
         }
 
@@ -79,13 +81,21 @@ public class SchemaChangeComponentMapper {
         return token;
     }
 
+    private String normalizeColumnToken(String columnName) {
+        if (columnName == null || columnName.isBlank()) {
+            return "";
+        }
+
+        return columnName.toLowerCase().replace("_", "");
+    }
+
     private double scoreByType(JavaComponentType type) {
         return switch (type) {
-            case ENTITY -> 0.95;
-            case REPOSITORY -> 0.90;
-            case SERVICE -> 0.80;
-            case CONTROLLER -> 0.75;
-            case REST_CONTROLLER -> 0.75;
+            case ENTITY -> 0.25;
+            case REPOSITORY -> 0.20;
+            case SERVICE -> 0.15;
+            case CONTROLLER -> 0.10;
+            case REST_CONTROLLER -> 0.10;
         };
     }
 }

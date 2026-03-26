@@ -6,3 +6,10 @@ ExternalProjectMappingTest.java 拿 spring-petclinic 做第一次真实映射测
 ComponentImpactResultBuilderTest.java 测试候选组件能否正确转成 ImpactResult
 ExternalMappedAnalysisServiceTest.java 用真实外部项目跑一次完整映射分析服务
 ImpactResultRankerTest.java 排序是否正确 是否真的只保留前 5 个结果
+ExternalSchemaToProjectAnalysisTest.java 
+        跑完整闭环：
+        读 petclinic schema v1/v2
+        自动 diff
+        扫描 spring-petclinic
+        自动映射
+        返回真实影响结果

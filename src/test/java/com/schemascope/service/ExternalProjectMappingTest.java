@@ -40,6 +40,8 @@ class ExternalProjectMappingTest {
                 .anyMatch(candidate -> candidate.getComponent().getClassName().equals("OwnerController"));
 
         assertTrue(hasOwner);
+        assertTrue(candidates.get(0).getComponent().getClassName().equals("Owner"));
+        assertTrue(candidates.get(1).getComponent().getClassName().equals("OwnerController"));
         assertTrue(hasOwnerController);
     }
 }

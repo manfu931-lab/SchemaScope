@@ -24,9 +24,9 @@ class SchemaChangeComponentMapperTest {
         );
 
         JavaProjectScanResult scanResult = new JavaProjectScanResult(List.of(
-                new JavaComponent("Owner", "/tmp/Owner.java", JavaComponentType.ENTITY),
-                new JavaComponent("OwnerController", "/tmp/OwnerController.java", JavaComponentType.CONTROLLER),
-                new JavaComponent("Pet", "/tmp/Pet.java", JavaComponentType.ENTITY)
+                new JavaComponent("Owner", "/tmp/owner/Owner.java", JavaComponentType.ENTITY),
+                new JavaComponent("OwnerController", "/tmp/owner/OwnerController.java", JavaComponentType.CONTROLLER),
+                new JavaComponent("Pet", "/tmp/pet/Pet.java", JavaComponentType.ENTITY)
         ));
 
         SchemaChangeComponentMapper mapper = new SchemaChangeComponentMapper();
@@ -37,5 +37,7 @@ class SchemaChangeComponentMapperTest {
         assertEquals("OwnerController", candidates.get(1).getComponent().getClassName());
 
         assertTrue(candidates.get(0).getScore() > candidates.get(1).getScore());
+        assertTrue(candidates.get(0).getReason().contains("table token"));
+        assertTrue(candidates.get(1).getReason().contains("component type bonus"));
     }
 }
