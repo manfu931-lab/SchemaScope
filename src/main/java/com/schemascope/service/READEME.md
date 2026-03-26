@@ -2,3 +2,6 @@ AnalysisService.java 定义“分析服务”应该提供什么能力
 impl 先写一个假的分析实现，返回模拟数据
 SimpleImpactAnalyzer.java 根据一条 SchemaChange，生成一组影响结果
 SchemaChangeFactory.java 专门负责把 AnalysisRequest 转成 SchemaChange
+SchemaChangeComponentMapper.java 根据 SchemaChange 和 JavaProjectScanResult，找出候选组件
+ComponentImpactResultBuilder.java 把候选组件 ComponentImpactCandidate 转成接口最终返回的 ImpactResult
+ImpactResultRanker.java 对 ImpactResult 列表进行排序和截断

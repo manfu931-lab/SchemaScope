@@ -22,7 +22,6 @@ class AnalysisControllerTest {
         String requestBody = """
                 {
                   "projectName": "petclinic",
-                  "projectPath": "/benchmark/petclinic",
                   "changeType": "DROP_COLUMN",
                   "tableName": "orders",
                   "columnName": "status",
@@ -47,7 +46,6 @@ class AnalysisControllerTest {
                 String requestBody = """
                         {
                           "projectName": "petclinic",
-                          "projectPath": "/benchmark/petclinic",
                           "changeType": "ALTER_COLUMN_TYPE",
                           "tableName": "users",
                           "columnName": "email",
@@ -69,12 +67,35 @@ class AnalysisControllerTest {
 
         @Test
         void shouldReturnAnalysisResultsFromRealSchemaFiles() throws Exception {
+                String requestBody = """
+                        {
+                          "projectName": "schemascope-self",
+                          "projectPath": ".",
+                          "oldSchemaPath": "src/test/resources/schema/schema_v1.sql",
+                          "newSchemaPath": "src/test/resources/schema/schema_v2.sql"
+                        }
+                        """;
+
+        mockMvc.perform(post("/api/analysis")
+                        .contentType(MediaType.APPLICATION_JSON_VALUE)
+                        .content(requestBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$[0].changeId").exists());
+        }
+        
+        @Test
+        void shouldReturnMappedResultsForExternalProject() throws Exception {
         String requestBody = """
                 {
-                "projectName": "demo-project",
-                "projectPath": "/benchmark/demo-project",
-                "oldSchemaPath": "src/test/resources/schema/schema_v1.sql",
-                "newSchemaPath": "src/test/resources/schema/schema_v2.sql"
+                "projectName": "spring-petclinic",
+                "projectPath": "D:/download/SchemaScope/benchmark/spring-petclinic",
+                "changeType": "DROP_COLUMN",
+                "tableName": "owners",
+                "columnName": "last_name",
+                "oldType": "VARCHAR(80)",
+                "newType": null,
+                "sourceFile": "manual-test"
                 }
                 """;
 
@@ -83,7 +104,11 @@ class AnalysisControllerTest {
                         .content(requestBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$[0].changeId").exists());
-        }       
+                .andExpect(jsonPath("$[0].changeId").value("chg-drop-column-owners-last-name"))
+                .andExpect(jsonPath("$[0].affectedObject").value("Owner"))
+                .andExpect(jsonPath("$[0].affectedType").value("ENTITY"))
+                .andExpect(jsonPath("$[0].riskLevel").value("HIGH"))
+                .andExpect(jsonPath("$[1].affectedObject").value("OwnerController"));
+}
 
 }

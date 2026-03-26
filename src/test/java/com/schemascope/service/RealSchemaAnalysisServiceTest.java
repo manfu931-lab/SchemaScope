@@ -3,6 +3,7 @@ package com.schemascope.service;
 import com.schemascope.domain.AnalysisRequest;
 import com.schemascope.domain.ImpactResult;
 import com.schemascope.parser.SchemaFileReader;
+import com.schemascope.parser.SpringProjectScanner;
 import com.schemascope.schemadiff.SchemaDiffService;
 import com.schemascope.service.impl.MockAnalysisService;
 import org.junit.jupiter.api.Test;
@@ -17,24 +18,23 @@ class RealSchemaAnalysisServiceTest {
 
     @Test
     void shouldAnalyzeFromRealSchemaFiles() {
-        SimpleImpactAnalyzer analyzer = new SimpleImpactAnalyzer();
-        SchemaChangeFactory factory = new SchemaChangeFactory();
-        SchemaFileReader reader = new SchemaFileReader();
-        SchemaDiffService diffService = new SchemaDiffService();
-
         MockAnalysisService service = new MockAnalysisService(
-                analyzer,
-                factory,
-                reader,
-                diffService
+                new SimpleImpactAnalyzer(),
+                new SchemaChangeFactory(),
+                new SchemaFileReader(),
+                new SchemaDiffService(),
+                new SpringProjectScanner(),
+                new SchemaChangeComponentMapper(),
+                new ComponentImpactResultBuilder()
         );
 
         String oldPath = Paths.get("src", "test", "resources", "schema", "schema_v1.sql").toString();
         String newPath = Paths.get("src", "test", "resources", "schema", "schema_v2.sql").toString();
+        String currentProjectRoot = Paths.get(".").toAbsolutePath().normalize().toString();
 
         AnalysisRequest request = new AnalysisRequest(
-                "demo-project",
-                "/benchmark/demo-project",
+                "schemascope-self",
+                currentProjectRoot,
                 oldPath,
                 newPath,
                 null,
@@ -46,6 +46,8 @@ class RealSchemaAnalysisServiceTest {
         );
 
         List<ImpactResult> results = service.analyze(request);
+
+        System.out.println(results);
 
         assertFalse(results.isEmpty());
 

@@ -1,0 +1,673 @@
+**“SchemaScope：面向 Java/Spring 项目的数据库 Schema 变更影响链分析平台”**，并且把核心做到“**跨层影响链 + 风险排序 + PR 审查闭环**”，它是你前面所有题里**最稳、最像软件工程国奖作品**的一条线。
+
+我建议你报 **“软件应用与开发”里的“管理信息系统”**。因为这个项目本质上是一个面向研发团队的工程治理系统；当然它也可以做成 Web 平台，但如果你报 Web 类，规则里通常要求提供可在互联网上访问的网站地址。软件类作品本身要求是可运行的软件系统，答辩陈述加演示时长通常不超过 10 分钟；近年的提交要求也强调要交源码、安装包、设计开发文档、演示 PPT/PDF、10 分钟内答辩视频等材料。
+
+另外，现在是 2026 赛季准备期，你要把 AI 使用合规提前想好：2026 规程里明确要求，若使用非自主研发 AI 工具，需要在允许范围内使用，并在报名材料里注明所用工具和技术路径；评审焦点也强调是**你对 AI 工具的驾驭能力**，不是模型本身多强。这个项目里 AI 只能做辅助，比如自然语言解释、修复建议，不要让 AI 变成核心判断器。
+---
+
+# 一、把题目先定死，不要再发散
+
+我建议你最终题名定成：
+
+**SchemaScope：面向 Java/Spring 项目的数据库 Schema 变更影响链分析平台**
+
+副标题可以写成：
+
+**基于 Schema Diff、程序分析与跨层依赖图的风险评估与 PR 审查系统**
+
+你这个作品最后要讲的不是“我能解析数据库”，而是：
+
+> 当研发团队改一条 DDL 或 migration 时，系统能自动找出会受影响的 SQL、Repository、Service、Controller、API 和测试，并给出可解释的风险排序与证据链，支持在 PR 阶段自动拦截高风险变更。
+
+这句话就是你整个作品的灵魂。
+
+---
+
+# 二、这个作品最终到底长什么样
+
+你最后交出去的，不应该只是一个分析脚本，而应该是一个**完整可运行平台**。
+
+## 用户怎么用
+
+用户最终的操作应该是这样：
+
+1. 登录平台，新建项目。
+2. 连接 Git 仓库，或者上传一个 Java/Spring 项目压缩包。
+3. 选择一个 PR、一个 migration 文件，或者上传新旧两版 schema。
+4. 点击“开始分析”。
+5. 系统自动完成：
+
+   * schema diff
+   * 代码抽取
+   * SQL 提取
+   * 依赖图构建
+   * 影响传播
+   * 风险评分
+6. 前端展示：
+
+   * 本次数据库变更摘要
+   * 受影响对象总览
+   * 风险热力图
+   * 影响链图谱
+   * 每个高风险点的证据路径
+7. 用户可以一键导出报告，或者让系统自动生成 PR 评论。
+
+## 用户最后看到什么效果
+
+最强的效果不是页面多炫，而是这一幕：
+
+> 你现场把 `orders.status` 列删除，系统 10~30 秒内告诉你：
+> 命中了 6 处 SQL、2 个 Repository、1 个 Service、2 个接口、3 个测试，其中 1 个高风险接口没有测试覆盖，建议阻塞合并。
+
+这就是评委最想看到的“真实价值”。
+
+---
+
+# 三、哪些东西可以直接借，哪些必须你自己做
+
+这里非常关键。国奖作品可以借开源，但**不能把核心判断借掉**。
+
+## 你可以直接借的
+
+### 1. Schema Diff：用 Atlas
+
+Atlas 已经能对两个 schema 状态做 diff，支持从数据库 URL、SQL schema、HCL schema、migration 目录等输入计算差异；还能生成迁移计划，并支持跳过 destructive 语句等 diff policy。你完全没必要自己手写 schema 对比器，直接把它当“变更识别层”用。
+
+你借它来做：
+* 新旧 schema 对比
+* 变更对象标准化
+* 破坏性变更识别
+
+你不要借它做：
+* 代码影响分析
+* 风险评分
+* PR 审查结论
+
+### 2. Java 解析：用 JavaParser + Symbol Solver
+
+JavaParser 能把 Java 源码转成 AST；JavaSymbolSolver 能在 AST 基础上把名称解析到声明、类型、定义位置；JavaParser 也提供了面向整个项目的 `ProjectRoot / CollectionStrategy` 方式，适合分析多模块项目。([GitHub][4])
+
+你借它来做：
+
+* 解析 Java 文件
+* 找类、方法、注解、字段、调用关系
+* 解析 JPA Entity、Repository、Controller、Service
+
+你不要停在这里。因为 AST 解析只是“看懂代码”，不是“判断影响”。
+
+### 3. 数据流/污点分析参考：用 CodeQL
+
+CodeQL 官方文档明确支持 Java/Kotlin 的 local/global data flow 与 taint tracking，还能处理字符串拼接这类传播路径。它很适合给你提供**程序分析方法论和 baseline**，尤其是你要追踪动态 SQL 字符串拼接时。([codeql.github.com][5])
+
+你借它来做：
+
+* 分析思路参考
+* baseline 查询
+* 验证你的数据流/污点分析是否站得住
+
+你不要直接把作品核心写成“调 CodeQL 查一下”，那样会被问穿。
+
+### 4. 自动修复原型：用 OpenRewrite
+
+OpenRewrite 是成熟的 Java 源码自动重构框架，基于语义树做最小侵入式改动，也支持自己写 recipe。你可以把它作为**高级功能**：分析出影响点后，自动生成部分修复建议或补丁原型。([docs.openrewrite.org][6])
+
+你借它来做：
+
+* 自动补丁建议
+* 代码迁移 demo
+* “一键修复”原型
+
+这个不是 MVP 必需，但对答辩加分很大。
+
+### 5. 需求/追踪思想参考：看 Reqvire
+
+Reqvire 把 requirements-as-code、traceability、impact report、PR 阻塞、CI/CD 集成这些工程化动作做得很清楚。你可以借它的**工作流设计思路**：不是只做分析，而是把分析结果真正塞进 PR 流程。([Reqvire][7])
+
+---
+
+## 你必须自己做的核心
+
+真正决定你是不是国奖级的，是下面 4 个东西。
+
+### 1. 跨层统一中间表示
+
+你要把这些东西统一进一张图里：
+
+* schema 变化
+* 表/列
+* SQL
+* Entity
+* Repository
+* Service
+* Controller
+* API
+* 测试
+
+这张图不能是“文件列表”，而要有明确边：
+
+* `column -> sql`
+* `sql -> method`
+* `method -> service`
+* `service -> api`
+* `api -> test`
+
+这个统一表示，是你的**作品骨架**。
+
+### 2. 影响传播算法
+
+你要自己设计从数据库变更往上游传播影响的算法。
+
+建议你做成三段式：
+
+**直接命中层**
+删列/改名/改类型，先命中直接引用这个表列的 SQL、Entity 字段、Mapper XML、注解 SQL。
+
+**传播层**
+从 SQL 节点向调用链上游扩散，直到 Repository / Service / Controller / Test。
+
+**证据裁剪层**
+不是所有传播都一样可信。你要设计边权和置信度，比如：
+
+* 显式 SQL 引用权重高
+* ORM 隐式映射次之
+* 字符串拼接和反射调用置信度低一些
+
+### 3. 风险评分模型
+
+这部分不能只有“受影响/不受影响”。
+
+你要输出：
+
+* 高风险
+* 中风险
+* 低风险
+
+建议评分维度：
+
+`Risk = 变更破坏性 × 依赖强度 × 传播深度 × 业务暴露度 × 测试缺口`
+
+具体可以拆成：
+
+* 删列 / 改类型 > 改长度 > 新增索引
+* 影响 API 比只影响内部方法更高
+* 没有测试覆盖更高
+* 命中多条链路更高
+* 事务路径更高
+
+### 4. PR 审查闭环
+
+你的作品不能停在“生成报告”。
+
+最像国奖的形态是：
+
+* 提交 PR
+* 自动发现 schema 变化
+* 自动分析影响链
+* 自动给 PR 评论
+* 可设置为 warning 或 block
+
+只要你把这一层做出来，作品就从“研究 demo”变成“工程产品”。
+
+---
+
+# 四、技术范围必须收口，不然必翻车
+
+这是你最需要听的一句。
+
+**你不要做“全 Java 生态、全数据库、全 ORM”。**
+
+正确做法是：
+
+## 第一阶段只支持
+
+* 语言：**Java**
+* 框架：**Spring Boot**
+* 数据访问：**JPA/Hibernate + MyBatis XML + JDBC**
+* migration：**Flyway 或 Liquibase 二选一，优先 Flyway**
+* 数据库：**PostgreSQL 或 MySQL 二选一，优先 PostgreSQL**
+
+为什么这么收？
+因为 JavaParser、CodeQL、OpenRewrite 都对 Java 生态支持很好；Flyway/Liquibase 的 migration 流程清晰；而且公开样例仓库足够多，像 Spring PetClinic、Spring Boot + Flyway 示例、MyBatis Spring Boot Starter 与相关 JPetStore 示例，都能给你提供真实技术栈参考。([GitHub][8])
+
+## 先不要碰
+
+* jOOQ
+* QueryDSL
+* Kotlin
+* 多语言仓库
+* 复杂反射动态 SQL
+* 多数据库自动泛化
+
+这些都是后期锦上添花，不是 MVP。
+
+---
+
+# 五、完整开发路线：12 周版本
+
+我建议你按 **12 周**做。
+如果你现在时间更长，可以把每阶段再拉细；如果你只有 6~8 周，也能按这个结构压缩。
+
+## 第 1 周：定题、定边界、定样例仓库
+
+你这周只做 4 件事：
+
+1. 最终题名确定
+2. 技术栈确定
+3. 选 3 个 benchmark 仓库
+4. 列出功能边界
+
+建议 benchmark 组合：
+
+* 一个 **Spring Boot + JPA** 项目
+* 一个 **Spring Boot + Flyway** 示例
+* 一个 **MyBatis Spring Boot** 项目
+
+这一周的产出应该是：
+
+* 1 页项目定位文档
+* 1 页系统边界文档
+* 3 个样例仓库名单
+* 1 张系统架构草图
+
+如果这一步不做，后面会一直摇摆。
+
+---
+
+## 第 2~3 周：先打通“变更识别 + Java 项目解析”
+
+这两周不要做前端。
+
+你先把最底层能力做通：
+
+### 目标 A：Schema Diff
+
+用 Atlas 跑通：
+
+* 输入旧 schema
+* 输入新 schema
+* 输出标准化变更对象列表
+
+输出样例：
+
+* 表 `orders` 删除列 `status`
+* 表 `user` 列 `email` 类型从 `varchar(64)` 到 `varchar(128)`
+
+### 目标 B：Java 项目索引
+
+用 JavaParser 跑通：
+
+* 解析项目所有 Java 文件
+* 索引类、方法、注解、包路径
+* 识别 Controller / Service / Repository / Entity
+
+### 目标 C：MyBatis/XML/SQL 抽取
+
+至少支持：
+
+* JPA Entity 字段
+* `@Query`
+* JDBC 字符串 SQL
+* MyBatis XML 中的 SQL 节点
+
+这一步做通之后，你就已经有“输入 schema 变化 + 看懂项目结构”的基础。
+
+---
+
+## 第 4~5 周：做“直接命中层”
+
+这是你的第一个可展示版本。
+
+目标很单纯：
+
+> 给你一个列变化，先找出所有直接受影响的 SQL、Entity 字段、Mapper XML、注解。
+
+这一阶段不用追求调用链，先把**直接命中**做准。
+
+### 你要做什么
+
+* 设计一个统一 SQL IR
+* 把 SQL 里涉及的表名、列名抽出来
+* 把 JPA Entity 字段映射到表列
+* 做字段改名、删列、改类型的匹配逻辑
+
+### 阶段成果
+
+演示时你可以做到：
+
+> 删除 `orders.status` 后，系统先给出 8 个直接命中的位置。
+
+这时候作品已经有“第一个能看的结果”了。
+
+---
+
+## 第 6~7 周：做“传播层”
+
+这是核心难点。
+
+你要把直接命中的代码点往上游传播：
+
+* SQL -> Mapper/Repository 方法
+* Repository -> Service
+* Service -> Controller
+* Controller -> API
+* API -> Test
+
+### 实现建议
+
+先不要做复杂图数据库，直接在后端内存里建有向图就够了：
+
+* 节点：表、列、SQL、方法、类、接口、测试
+* 边：引用、调用、映射、覆盖
+
+然后用 BFS/带权搜索做传播。
+
+### 这一步的关键
+
+你必须能解释：
+
+* 为什么这条链成立
+* 哪些边是显式证据
+* 哪些边是推断证据
+
+### 阶段成果
+
+这个时候你应该能展示：
+
+> 删掉一列后，系统不仅能找 SQL，还能一路指出具体 Service、接口和测试。
+
+这一步一旦成型，作品就立起来了。
+
+---
+
+## 第 8 周：做风险评分
+
+很多学生作品死在这里：能找出影响点，但没有优先级。
+
+你要做的是：
+
+* 把影响点排序
+* 解释为什么高风险
+
+### 最低可用评分模型
+
+建议直接做线性加权：
+
+* 变更类型：删列/改类型/改名/约束变化
+* 依赖强度：显式 SQL > ORM 映射 > 模糊命中
+* 暴露程度：API > service > internal method
+* 测试情况：无测试覆盖加权更高
+* 传播深度：链越长风险越高
+
+### 这周的产出
+
+你要拿到一个可展示榜单：
+
+1. `/api/orders/list` 高风险
+2. `OrderService.queryByStatus()` 中风险
+3. `OrderMapper.xml#query1` 低风险
+
+只要你能解释清楚这个榜单，评委就会买账。
+
+---
+
+## 第 9 周：做前端与可视化
+
+现在才开始做前端。
+
+前端只需要 4 个页面：
+
+### 1. 项目总览页
+
+* 项目名
+* 技术栈
+* 最近分析记录
+* 风险概览
+
+### 2. 变更分析页
+
+* 本次 schema 变更列表
+* 破坏性变更标红
+* 高风险对象数
+
+### 3. 影响图谱页
+
+* 左边 schema 变更
+* 中间受影响代码
+* 右边接口/测试
+* 可以点击展开证据链
+
+### 4. 风险详情页
+
+* 风险分数
+* 证据路径
+* 对应代码位置
+* 建议动作
+
+前端一定要简洁。
+你不是做 BI 大屏，是做“工程风险诊断面板”。
+
+---
+
+## 第 10 周：做 PR 集成
+
+这一步是加分王。
+
+### 你要实现
+
+* 用户选择一个 PR
+* 系统获取 diff
+* 发现 migration/schema 变化
+* 运行影响分析
+* 自动生成评论文本
+
+评论示例：
+
+* 本次 PR 含 1 项破坏性 schema 变更
+* 受影响 7 个 SQL、3 个 API、4 个测试
+* 高风险点：`/api/orders/list`
+* 建议：补充 `OrderControllerTest`，修复 `OrderMapper.xml`
+
+如果你能在 GitHub/Gitee 上真演示这个动作，作品直接上一个层级。
+
+---
+
+## 第 11 周：做实验与评测
+
+没有实验，作品只是“看起来合理”。
+
+### 你至少要做 3 组评测
+
+#### 1. 正确性评测
+
+人工标注一批 schema 变更影响结果，比较：
+
+* 你的系统
+* 关键词搜索
+* 简单文本匹配
+
+指标：
+
+* Precision
+* Recall
+* F1
+
+#### 2. 排序评测
+
+看你的风险排序前 5 名里，命中多少真实高风险点。
+
+指标：
+
+* Top-5 hit rate
+* MRR 或 NDCG 都可以，简单些也行
+
+#### 3. 效率评测
+
+比较人工排查和系统辅助排查耗时。
+
+指标：
+
+* 平均分析时间
+* 人工时间节省比例
+
+### 国奖级最低目标
+
+这不是官方线，是我给你的实战线：
+
+* 显式依赖命中：**Precision 0.8 左右**
+* 整体影响召回：**Recall 0.7 左右**
+* Top-5 风险命中率：**至少 70%**
+* 相比人工初筛节省：**50% 以上时间**
+
+你做不到这个量级，也不是不能获奖，但冲国奖会虚。
+
+---
+
+## 第 12 周：打磨答辩与材料
+
+最后一周不要再加功能了。
+
+你要做 5 件事：
+
+1. **录一个 3 分钟稳定演示视频**
+2. **准备 10 分钟答辩稿**
+3. **整理源码、安装包、文档、PPT、PDF**
+4. **把 AI 使用说明写清楚**
+5. **准备 20 个高频问答**
+
+---
+
+# 六、答辩时到底怎么讲，才像国奖作品
+
+你 10 分钟不能讲成技术流水账。
+
+## 最优讲法
+
+### 第 1 分钟：问题
+
+“数据库 schema 改动在真实研发中高频且高风险，现有工具擅长生成 migration 或做 schema diff，但无法回答‘这次改动会炸掉哪些 Java 代码、哪些接口和哪些测试’。”
+
+这里你顺手提到：Atlas 擅长 schema diff，CodeQL 擅长程序分析，但它们没有直接给出“面向应用代码的跨层影响链”。([AtlasGo][3])
+
+### 第 2~4 分钟：你的方法
+
+讲 3 个核心：
+
+1. schema 变更对象化
+2. Java/Spring 项目依赖图
+3. 影响传播 + 风险排序
+
+### 第 5~7 分钟：演示
+
+现场改一条 migration 或切一个 PR：
+
+* 系统识别 schema 变化
+* 系统给出影响图
+* 系统给出高风险点
+* 系统给出 PR 评论
+
+### 第 8~9 分钟：实验
+
+给出三组图：
+
+* 正确率
+* Top-K 命中率
+* 效率提升
+
+### 第 10 分钟：总结
+
+“本作品不是一个 schema diff 工具，而是一个把数据库变更风险自动传播到代码、接口与测试层的工程治理系统。”
+
+---
+
+# 七、评委最可能问你的 10 个问题
+
+你一定会被问这些：
+
+1. 你和 Atlas 的区别是什么？
+   答：Atlas 负责 schema diff；我负责**schema 到应用代码影响链**。([AtlasGo][3])
+
+2. 你和 CodeQL 的区别是什么？
+   答：CodeQL 提供程序分析能力；我把它拓展成**数据库变更驱动的跨层影响分析工作流**。([codeql.github.com][5])
+
+3. 动态 SQL 怎么处理？
+   答：显式 SQL 精确分析；字符串拼接用污点/数据流近似；极端动态场景给低置信度提示。([codeql.github.com][5])
+
+4. 为什么只做 Java/Spring？
+   答：收口，保证打深，而不是做虚。
+
+5. 为什么风险排序可信？
+   答：变更破坏性、依赖强度、暴露度、测试缺口共同决定。
+
+6. 误报怎么办？
+   答：展示证据链和置信度，而不是黑盒结论。
+
+7. 能自动修吗？
+   答：高级版支持 OpenRewrite recipe 做部分自动修复建议。([docs.openrewrite.org][6])
+
+8. 为什么你这个有实际价值？
+   答：能把人工半天到一天的排查缩短到分钟级。
+
+9. 用没用 AI？
+   答：AI 只做解释或建议，不做核心判断；且会按规则说明工具与技术路径。([xagx.zuel.edu.cn][2])
+
+10. 为什么能算创新？
+    答：创新点不在单层技术，而在**把 schema diff、程序分析、依赖传播、风险排序、PR 审查做成一个跨层闭环**。
+
+---
+
+# 八、最后给你一个最现实的“国奖线”
+
+没有公开统一的“国奖分数线”，但按实战看，你至少要做到下面这个水位：
+
+## 你必须有
+
+* 一个**稳定可运行的 Web 系统**
+* 一个**明确支持的技术栈**
+* 三类真实测试仓库
+* 一套可重复实验
+* 一个 10 分钟内极强的 demo
+* 一套清晰的原创算法描述
+
+## 你不能只有
+
+* 一堆页面
+* 一个 diff 脚本
+* 一句“用 AI 智能分析”
+* 纯关键词搜索
+* 没有实验的概念图
+
+如果你最终做到的是：
+
+* 支持 Java/Spring + JPA/MyBatis/JDBC
+* 能识别 migration 变更
+* 能给出跨层影响链
+* 能排序风险
+* 能 PR 评论
+* 能在 2~3 个真实开源项目上证明有效
+
+那它就已经是**非常强的省一/国奖候选作品**了。
+
+---
+
+# 九、我替你把路线压缩成一句执行版
+
+**第 1 阶段**：借 Atlas 做 schema diff，借 JavaParser 看懂项目。
+**第 2 阶段**：自己做 SQL/代码统一图和影响传播。
+**第 3 阶段**：自己做风险评分和证据链。
+**第 4 阶段**：接上前端和 PR 审查。
+**第 5 阶段**：拿真实仓库做实验和答辩。
+
+你现在不要再想“要不要换题”，而是直接进入开发前的第一步：
+**把支持范围锁死为 Java + Spring Boot + JPA/MyBatis/JDBC + Flyway + PostgreSQL。**
+
+[1]: https://jsjds.jscs.org.cn/kindeditor/attached/file/20250126/20250126171024_38483.pdf?utm_source=chatgpt.com "附件1
+2025 年（第18 届）中国大学生计算机设计大赛
+竞赛规程
+（竞赛主题、作品分类、参赛要求"
+[2]: https://xagx.zuel.edu.cn/_upload/article/files/61/79/2b56b02f457ca8ef4cdd197b66b8/9864d5b7-0e32-448d-8fe6-87ae204c8f7f.pdf?utm_source=chatgpt.com "关于举办“2026 年（第19 届）中国大学生计算机设计大赛”的"
+[3]: https://atlasgo.io/declarative/diff?utm_source=chatgpt.com "Database Schema Diff - Comparing Schemas | Atlas Docs"
+[4]: https://github.com/javaparser/javasymbolsolver?utm_source=chatgpt.com "GitHub - javaparser/javasymbolsolver: *old repository* --> this is now integrated in https://github.com/javaparser/javaparser"
+[5]: https://codeql.github.com/codeql-standard-libraries/java/semmle/code/java/dataflow/TaintTracking.qll/module.TaintTracking.html?utm_source=chatgpt.com "TaintTracking"
+[6]: https://docs.openrewrite.org/?utm_source=chatgpt.com "OpenRewrite by Moderne | Large Scale Automated Refactoring | OpenRewrite Docs"
+[7]: https://www.reqvire.org/?utm_source=chatgpt.com "About Reqvire | Reqvire"
+[8]: https://github.com/spring-projects/spring-petclinic?utm_source=chatgpt.com "GitHub - spring-projects/spring-petclinic: A sample Spring-based application"

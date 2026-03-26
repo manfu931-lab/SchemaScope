@@ -6,3 +6,7 @@ ImpactResult.java 表示一条分析结果
 SchemaColumn.java 表示一个列
 SchemaTable.java 表示一个表
 ParsedSchema.java 表示“一个 schema 文件解析后的结果”
+JavaComponentType.java 定义 Java 组件类型枚举
+JavaComponent.java 表示一个被扫描出来的 Java 组件
+JavaProjectScanResult.java 表示一次项目扫描的总结果
+ComponentImpactCandidate.java 表示一个“候选受影响组件”
