@@ -13,3 +13,6 @@ ExternalSchemaToProjectAnalysisTest.java
         扫描 spring-petclinic
         自动映射
         返回真实影响结果
+ImpactCandidateGrouperTest.java 验证 ImpactCandidateGrouper 真的能把结果分成两组。
+ImpactResultGrouperTest.java 测试分组器能不能按 relationLevel 正确分组
+GroupedExternalAnalysisTest.java 用真实外部项目分析结果，验证分组结果是否符合预期

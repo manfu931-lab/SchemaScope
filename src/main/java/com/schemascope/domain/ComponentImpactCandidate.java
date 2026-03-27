@@ -5,6 +5,7 @@ public class ComponentImpactCandidate {
     private JavaComponent component;
     private double score;
     private String reason;
+    private ImpactRelationLevel relationLevel;
 
     public ComponentImpactCandidate() {
     }
@@ -13,6 +14,17 @@ public class ComponentImpactCandidate {
         this.component = component;
         this.score = score;
         this.reason = reason;
+        this.relationLevel = ImpactRelationLevel.INDIRECT;
+    }
+
+    public ComponentImpactCandidate(JavaComponent component,
+                                    double score,
+                                    String reason,
+                                    ImpactRelationLevel relationLevel) {
+        this.component = component;
+        this.score = score;
+        this.reason = reason;
+        this.relationLevel = relationLevel;
     }
 
     public JavaComponent getComponent() {
@@ -39,12 +51,21 @@ public class ComponentImpactCandidate {
         this.reason = reason;
     }
 
+    public ImpactRelationLevel getRelationLevel() {
+        return relationLevel;
+    }
+
+    public void setRelationLevel(ImpactRelationLevel relationLevel) {
+        this.relationLevel = relationLevel;
+    }
+
     @Override
     public String toString() {
         return "ComponentImpactCandidate{" +
                 "component=" + component +
                 ", score=" + score +
                 ", reason='" + reason + '\'' +
+                ", relationLevel=" + relationLevel +
                 '}';
     }
 }

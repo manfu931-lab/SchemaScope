@@ -1,16 +1,5 @@
 package com.schemascope.domain;
-/*
-定义“系统分析出的一条结果”长什么样。
 
-比如以后系统分析出：
-
-这次删除 orders.status
-影响到了 /api/orders/list
-风险等级高
-风险分数 87.5
-证据链是：列 → SQL → Repository → Service → API
-
-这些信息就要装在 ImpactResult 里。 */
 import java.util.List;
 
 public class ImpactResult {
@@ -22,17 +11,12 @@ public class ImpactResult {
     private RiskLevel riskLevel;
     private double confidence;
     private List<String> evidencePath;
+    private ImpactRelationLevel relationLevel;
 
     public ImpactResult() {
     }
-/*changeId：对应哪次 schema 变化
-affectedObject：受影响对象是谁，比如某个 API 或方法
-affectedType：受影响对象类型，比如 API、METHOD
-riskScore：风险分数
-riskLevel：高/中/低风险
-confidence：分析结果置信度
-evidencePath：证据链路径 */
-    public ImpactResult(String changeId,            
+
+    public ImpactResult(String changeId,
                         String affectedObject,
                         String affectedType,
                         double riskScore,
@@ -46,6 +30,25 @@ evidencePath：证据链路径 */
         this.riskLevel = riskLevel;
         this.confidence = confidence;
         this.evidencePath = evidencePath;
+        this.relationLevel = ImpactRelationLevel.INDIRECT;
+    }
+
+    public ImpactResult(String changeId,
+                        String affectedObject,
+                        String affectedType,
+                        double riskScore,
+                        RiskLevel riskLevel,
+                        double confidence,
+                        List<String> evidencePath,
+                        ImpactRelationLevel relationLevel) {
+        this.changeId = changeId;
+        this.affectedObject = affectedObject;
+        this.affectedType = affectedType;
+        this.riskScore = riskScore;
+        this.riskLevel = riskLevel;
+        this.confidence = confidence;
+        this.evidencePath = evidencePath;
+        this.relationLevel = relationLevel;
     }
 
     public String getChangeId() {
@@ -104,6 +107,14 @@ evidencePath：证据链路径 */
         this.evidencePath = evidencePath;
     }
 
+    public ImpactRelationLevel getRelationLevel() {
+        return relationLevel;
+    }
+
+    public void setRelationLevel(ImpactRelationLevel relationLevel) {
+        this.relationLevel = relationLevel;
+    }
+
     @Override
     public String toString() {
         return "ImpactResult{" +
@@ -114,6 +125,7 @@ evidencePath：证据链路径 */
                 ", riskLevel=" + riskLevel +
                 ", confidence=" + confidence +
                 ", evidencePath=" + evidencePath +
+                ", relationLevel=" + relationLevel +
                 '}';
     }
 }

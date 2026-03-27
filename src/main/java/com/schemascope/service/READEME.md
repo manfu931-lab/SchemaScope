@@ -5,3 +5,5 @@ SchemaChangeFactory.java 专门负责把 AnalysisRequest 转成 SchemaChange
 SchemaChangeComponentMapper.java 根据 SchemaChange 和 JavaProjectScanResult，找出候选组件
 ComponentImpactResultBuilder.java 把候选组件 ComponentImpactCandidate 转成接口最终返回的 ImpactResult
 ImpactResultRanker.java 对 ImpactResult 列表进行排序和截断
+ImpactCandidateGrouper.java 把候选组件列表分成“直接相关”和“间接相关”
+ImpactResultGrouper.java 把 List<ImpactResult> 分组为 GroupedImpactResults

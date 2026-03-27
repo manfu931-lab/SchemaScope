@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import com.schemascope.domain.ImpactRelationLevel;
 
 class ComponentImpactResultBuilderTest {
 
@@ -26,12 +27,14 @@ class ComponentImpactResultBuilderTest {
                 new ComponentImpactCandidate(
                         new JavaComponent("Owner", "/tmp/Owner.java", JavaComponentType.ENTITY),
                         0.95,
-                        "class name matches table token 'owner'"
+                        "class name matches table token 'owner'",
+                        ImpactRelationLevel.DIRECT
                 ),
                 new ComponentImpactCandidate(
                         new JavaComponent("OwnerController", "/tmp/OwnerController.java", JavaComponentType.CONTROLLER),
                         0.75,
-                        "class name matches table token 'owner'"
+                        "class name matches table token 'owner'",
+                        ImpactRelationLevel.INDIRECT
                 )
         );
 
@@ -43,5 +46,7 @@ class ComponentImpactResultBuilderTest {
         assertEquals("ENTITY", results.get(0).getAffectedType());
         assertEquals(95.0, results.get(0).getRiskScore());
         assertEquals(RiskLevel.HIGH, results.get(0).getRiskLevel());
+        assertEquals(ImpactRelationLevel.DIRECT, results.get(0).getRelationLevel());
+        assertEquals(ImpactRelationLevel.INDIRECT, results.get(1).getRelationLevel());
     }
 }

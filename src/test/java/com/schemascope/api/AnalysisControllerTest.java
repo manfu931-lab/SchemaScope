@@ -38,7 +38,8 @@ class AnalysisControllerTest {
                 .andExpect(jsonPath("$[0].changeId").value("chg-drop-column-orders-status"))
                 .andExpect(jsonPath("$[0].affectedObject").value("/api/orders/list"))
                 .andExpect(jsonPath("$[0].riskLevel").value("HIGH"))
-                .andExpect(jsonPath("$[1].affectedType").value("METHOD"));
+                .andExpect(jsonPath("$[1].affectedType").value("METHOD"))
+                .andExpect(jsonPath("$[0].relationLevel").exists());
     }
 
         @Test
@@ -81,7 +82,8 @@ class AnalysisControllerTest {
                         .content(requestBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$[0].changeId").exists());
+                .andExpect(jsonPath("$[0].changeId").exists())
+                .andExpect(jsonPath("$[0].relationLevel").exists());
         }
         
         @Test
@@ -108,7 +110,10 @@ class AnalysisControllerTest {
                 .andExpect(jsonPath("$[0].affectedObject").value("Owner"))
                 .andExpect(jsonPath("$[0].affectedType").value("ENTITY"))
                 .andExpect(jsonPath("$[0].riskLevel").value("HIGH"))
-                .andExpect(jsonPath("$[1].affectedObject").value("OwnerController"));
+                .andExpect(jsonPath("$[1].affectedObject").value("OwnerController"))
+                .andExpect(jsonPath("$[0].relationLevel").value("DIRECT"))
+                .andExpect(jsonPath("$[1].relationLevel").value("INDIRECT"));
+        
 }
 
 }

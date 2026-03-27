@@ -1,11 +1,13 @@
 package com.schemascope.service;
 
 import com.schemascope.domain.ComponentImpactCandidate;
+import com.schemascope.domain.ImpactRelationLevel;
 import com.schemascope.domain.JavaComponent;
 import com.schemascope.domain.JavaComponentType;
 import com.schemascope.domain.JavaProjectScanResult;
 import com.schemascope.domain.SchemaChange;
 import org.springframework.stereotype.Component;
+import com.schemascope.domain.ImpactRelationLevel;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -18,7 +20,7 @@ public class SchemaChangeComponentMapper {
         List<ComponentImpactCandidate> candidates = new ArrayList<>();
 
         String tableToken = normalizeTableToken(change.getTableName());
-        String columnToken = normalizeColumnToken(change.getColumnName());
+        List<String> columnTokens = normalizeColumnTokens(change.getColumnName());
 
         for (JavaComponent component : scanResult.getComponents()) {
             String className = component.getClassName().toLowerCase();
@@ -27,13 +29,17 @@ public class SchemaChangeComponentMapper {
             double score = 0.0;
             List<String> reasons = new ArrayList<>();
 
+            boolean tableMatched = false;
+
             if (!tableToken.isBlank() && className.contains(tableToken)) {
-                score += 0.60;
+                score += 0.55;
+                tableMatched = true;
                 reasons.add("class name matches table token '" + tableToken + "'");
             }
 
             if (!tableToken.isBlank() && filePath.contains(tableToken)) {
                 score += 0.15;
+                tableMatched = true;
                 reasons.add("file path matches table token '" + tableToken + "'");
             }
 
@@ -43,18 +49,30 @@ public class SchemaChangeComponentMapper {
                 reasons.add("component type bonus: " + component.getComponentType());
             }
 
-            if (!columnToken.isBlank() && (className.contains(columnToken) || filePath.contains(columnToken))) {
-                score += 0.05;
-                reasons.add("column token hint '" + columnToken + "'");
+            double columnBonus = scoreByColumnTokens(className, filePath, columnTokens, reasons);
+            score += columnBonus;
+            boolean columnMatched = columnBonus > 0;
+
+            double structuralBonus = scoreByColumnLevelChange(change, component.getComponentType(), tableMatched);
+            if (structuralBonus > 0) {
+                score += structuralBonus;
+                reasons.add("column-level schema change bonus: " + component.getComponentType());
             }
 
             score = Math.min(score, 1.0);
 
             if (score >= 0.70) {
+                ImpactRelationLevel relationLevel = resolveRelationLevel(
+                    component.getComponentType(),
+                    tableMatched,
+                    columnMatched
+                );
+
                 candidates.add(new ComponentImpactCandidate(
-                        component,
-                        score,
-                        String.join("; ", reasons)
+                    component,
+                    score,
+                    String.join("; ", reasons),
+                    relationLevel
                 ));
             }
         }
@@ -81,12 +99,60 @@ public class SchemaChangeComponentMapper {
         return token;
     }
 
-    private String normalizeColumnToken(String columnName) {
+    private List<String> normalizeColumnTokens(String columnName) {
+        List<String> tokens = new ArrayList<>();
+
         if (columnName == null || columnName.isBlank()) {
-            return "";
+            return tokens;
         }
 
-        return columnName.toLowerCase().replace("_", "");
+        String normalized = columnName.toLowerCase().trim();
+        for (String token : normalized.split("_")) {
+            if (!token.isBlank() && token.length() >= 3) {
+                tokens.add(token);
+            }
+        }
+
+        if (tokens.isEmpty() && normalized.length() >= 3) {
+            tokens.add(normalized);
+        }
+
+        return tokens;
+    }
+
+    private double scoreByColumnTokens(String className,
+                                       String filePath,
+                                       List<String> columnTokens,
+                                       List<String> reasons) {
+        double bonus = 0.0;
+
+        for (String token : columnTokens) {
+            if (className.contains(token) || filePath.contains(token)) {
+                bonus += 0.08;
+                reasons.add("column token hint '" + token + "'");
+            }
+        }
+
+        return Math.min(bonus, 0.12);
+    }
+
+    private double scoreByColumnLevelChange(SchemaChange change,
+                                            JavaComponentType type,
+                                            boolean tableMatched) {
+        if (!tableMatched) {
+            return 0.0;
+        }
+
+        if (change.getColumnName() == null || change.getColumnName().isBlank()) {
+            return 0.0;
+        }
+
+        return switch (type) {
+            case ENTITY -> 0.05;
+            case REPOSITORY -> 0.04;
+            case SERVICE -> 0.03;
+            case CONTROLLER, REST_CONTROLLER -> 0.0;
+        };
     }
 
     private double scoreByType(JavaComponentType type) {
@@ -96,6 +162,18 @@ public class SchemaChangeComponentMapper {
             case SERVICE -> 0.15;
             case CONTROLLER -> 0.10;
             case REST_CONTROLLER -> 0.10;
+        };
+    }
+
+    private ImpactRelationLevel resolveRelationLevel(JavaComponentType type,boolean tableMatched,boolean columnMatched) {
+        if (!tableMatched) {
+            return ImpactRelationLevel.INDIRECT;
+        }
+
+        return switch (type) {
+            case ENTITY, REPOSITORY -> ImpactRelationLevel.DIRECT;
+            case SERVICE -> columnMatched ? ImpactRelationLevel.DIRECT : ImpactRelationLevel.INDIRECT;
+            case CONTROLLER, REST_CONTROLLER -> ImpactRelationLevel.INDIRECT;
         };
     }
 }

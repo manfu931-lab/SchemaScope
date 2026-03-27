@@ -21,18 +21,19 @@ public class ComponentImpactResultBuilder {
             double riskScore = candidate.getScore() * 100.0;
 
             ImpactResult result = new ImpactResult(
-                    change.getChangeId(),
-                    candidate.getComponent().getClassName(),
-                    candidate.getComponent().getComponentType().name(),
-                    riskScore,
-                    toRiskLevel(riskScore),
-                    candidate.getScore(),
-                    Arrays.asList(
-                            change.getTableName() + "." + change.getColumnName(),
-                            candidate.getReason(),
-                            candidate.getComponent().getClassName()
-                    )
-            );
+                change.getChangeId(),
+                candidate.getComponent().getClassName(),
+                candidate.getComponent().getComponentType().name(),
+                riskScore,
+                toRiskLevel(riskScore),
+                candidate.getScore(),
+                Arrays.asList(
+                        change.getTableName() + "." + change.getColumnName(),
+                        candidate.getReason(),
+                        candidate.getComponent().getClassName()
+                ),
+                candidate.getRelationLevel()
+        );
 
             results.add(result);
         }

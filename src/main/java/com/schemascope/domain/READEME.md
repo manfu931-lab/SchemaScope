@@ -10,3 +10,6 @@ JavaComponentType.java 定义 Java 组件类型枚举
 JavaComponent.java 表示一个被扫描出来的 Java 组件
 JavaProjectScanResult.java 表示一次项目扫描的总结果
 ComponentImpactCandidate.java 表示一个“候选受影响组件”
+ImpactRelationLevel.java 定义关系层级：直接 / 间接
+GroupedImpactCandidates.java 表示分层后的结果：directCandidates / indirectCandidates
+GroupedImpactResults.java 表示最终结果分组：直接结果 / 间接结果
