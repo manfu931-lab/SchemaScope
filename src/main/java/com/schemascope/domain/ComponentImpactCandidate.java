@@ -1,30 +1,40 @@
 package com.schemascope.domain;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class ComponentImpactCandidate {
 
     private JavaComponent component;
     private double score;
     private String reason;
     private ImpactRelationLevel relationLevel;
+    private List<String> evidencePath = new ArrayList<>();
 
     public ComponentImpactCandidate() {
     }
 
     public ComponentImpactCandidate(JavaComponent component, double score, String reason) {
-        this.component = component;
-        this.score = score;
-        this.reason = reason;
-        this.relationLevel = ImpactRelationLevel.INDIRECT;
+        this(component, score, reason, ImpactRelationLevel.INDIRECT, new ArrayList<>());
     }
 
     public ComponentImpactCandidate(JavaComponent component,
                                     double score,
                                     String reason,
                                     ImpactRelationLevel relationLevel) {
+        this(component, score, reason, relationLevel, new ArrayList<>());
+    }
+
+    public ComponentImpactCandidate(JavaComponent component,
+                                    double score,
+                                    String reason,
+                                    ImpactRelationLevel relationLevel,
+                                    List<String> evidencePath) {
         this.component = component;
         this.score = score;
         this.reason = reason;
         this.relationLevel = relationLevel;
+        this.evidencePath = evidencePath == null ? new ArrayList<>() : new ArrayList<>(evidencePath);
     }
 
     public JavaComponent getComponent() {
@@ -59,6 +69,14 @@ public class ComponentImpactCandidate {
         this.relationLevel = relationLevel;
     }
 
+    public List<String> getEvidencePath() {
+        return evidencePath;
+    }
+
+    public void setEvidencePath(List<String> evidencePath) {
+        this.evidencePath = evidencePath == null ? new ArrayList<>() : new ArrayList<>(evidencePath);
+    }
+
     @Override
     public String toString() {
         return "ComponentImpactCandidate{" +
@@ -66,6 +84,7 @@ public class ComponentImpactCandidate {
                 ", score=" + score +
                 ", reason='" + reason + '\'' +
                 ", relationLevel=" + relationLevel +
+                ", evidencePath=" + evidencePath +
                 '}';
     }
 }

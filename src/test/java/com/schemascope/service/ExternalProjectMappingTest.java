@@ -1,22 +1,30 @@
 package com.schemascope.service;
 
-import com.schemascope.domain.*;
+import com.schemascope.domain.ChangeType;
+import com.schemascope.domain.ComponentImpactCandidate;
+import com.schemascope.domain.JavaProjectScanResult;
+import com.schemascope.domain.SchemaChange;
 import com.schemascope.parser.SpringProjectScanner;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExternalProjectMappingTest {
 
     @Test
-    void shouldMapOwnerTableChangeToPetclinicComponents() throws Exception {
+    void shouldMapOwnerTableChangeToLocalFixtureComponents() throws Exception {
         SpringProjectScanner scanner = new SpringProjectScanner();
         SchemaChangeComponentMapper mapper = new SchemaChangeComponentMapper();
 
-        String projectRoot = "D:/download/SchemaScope/benchmark/spring-petclinic";
-        JavaProjectScanResult scanResult = scanner.scan(projectRoot);
+        Path projectRoot = Path.of("src", "test", "resources", "fixture", "sql-demo-project")
+                .toAbsolutePath()
+                .normalize();
+
+        JavaProjectScanResult scanResult = scanner.scan(projectRoot.toString());
 
         SchemaChange change = new SchemaChange(
                 "chg-drop-column-owners-last-name",
@@ -31,17 +39,30 @@ class ExternalProjectMappingTest {
 
         List<ComponentImpactCandidate> candidates = mapper.mapCandidates(change, scanResult);
 
-        System.out.println(candidates);
+        System.out.println("ExternalProjectMappingTest candidates = " + candidates);
 
-        boolean hasOwner = candidates.stream()
-                .anyMatch(candidate -> candidate.getComponent().getClassName().equals("Owner"));
+        assertFalse(candidates.isEmpty(), "Expected heuristic mapper to return some candidates");
 
-        boolean hasOwnerController = candidates.stream()
-                .anyMatch(candidate -> candidate.getComponent().getClassName().equals("OwnerController"));
+        boolean hasRepositoryLayerMatch = candidates.stream().anyMatch(candidate ->
+                "OwnerRepository".equals(candidate.getComponent().getClassName())
+                        || "OwnerJdbcDao".equals(candidate.getComponent().getClassName())
+        );
 
-        assertTrue(hasOwner);
-        assertTrue(candidates.get(0).getComponent().getClassName().equals("Owner"));
-        assertTrue(candidates.get(1).getComponent().getClassName().equals("OwnerController"));
-        assertTrue(hasOwnerController);
+        boolean allHaveReason = candidates.stream().allMatch(candidate ->
+                candidate.getReason() != null && !candidate.getReason().isBlank()
+        );
+
+        boolean allHaveRelationLevel = candidates.stream().allMatch(candidate ->
+                candidate.getRelationLevel() != null
+        );
+
+        boolean allMeetThreshold = candidates.stream().allMatch(candidate ->
+                candidate.getScore() >= 0.70
+        );
+
+        assertTrue(hasRepositoryLayerMatch, "Expected at least one repository-layer fallback candidate");
+        assertTrue(allHaveReason, "Expected heuristic candidates to carry reasons");
+        assertTrue(allHaveRelationLevel, "Expected heuristic candidates to carry relation levels");
+        assertTrue(allMeetThreshold, "Expected heuristic candidates to satisfy mapper threshold");
     }
 }

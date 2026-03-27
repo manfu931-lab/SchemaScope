@@ -4,10 +4,12 @@ import com.schemascope.domain.AnalysisRequest;
 import com.schemascope.domain.ImpactResult;
 import com.schemascope.parser.SchemaFileReader;
 import com.schemascope.parser.SpringProjectScanner;
+import com.schemascope.parser.SqlAccessExtractor;
 import com.schemascope.schemadiff.SchemaDiffService;
 import com.schemascope.service.impl.MockAnalysisService;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -15,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ExternalMappedAnalysisServiceTest {
 
     @Test
-    void shouldReturnMappedImpactResultsForExternalProject() {
+    void shouldReturnEvidenceDrivenImpactResultsForLocalFixtureProject() {
         MockAnalysisService service = new MockAnalysisService(
                 new SimpleImpactAnalyzer(),
                 new SchemaChangeFactory(),
@@ -24,12 +26,19 @@ class ExternalMappedAnalysisServiceTest {
                 new SpringProjectScanner(),
                 new SchemaChangeComponentMapper(),
                 new ComponentImpactResultBuilder(),
-                new ImpactResultRanker()
+                new ImpactResultRanker(),
+                new SqlAccessExtractor(),
+                new SchemaChangeSqlMatcher(),
+                new SqlImpactPropagator()
         );
 
+        Path projectRoot = Path.of("src", "test", "resources", "fixture", "sql-demo-project")
+                .toAbsolutePath()
+                .normalize();
+
         AnalysisRequest request = new AnalysisRequest(
-                "spring-petclinic",
-                "D:/download/SchemaScope/benchmark/spring-petclinic",
+                "sql-demo-project",
+                projectRoot.toString(),
                 null,
                 null,
                 "DROP_COLUMN",
@@ -44,14 +53,26 @@ class ExternalMappedAnalysisServiceTest {
 
         System.out.println(results);
 
-        boolean hasOwner = results.stream()
-                .anyMatch(r -> r.getAffectedObject().equals("Owner"));
+        boolean hasOwnerJdbcDao = results.stream()
+                .anyMatch(r -> "OwnerJdbcDao".equals(r.getAffectedObject()));
+
+        boolean hasOwnerRepository = results.stream()
+                .anyMatch(r -> "OwnerRepository".equals(r.getAffectedObject()));
+
+        boolean hasOwnerService = results.stream()
+                .anyMatch(r -> "OwnerService".equals(r.getAffectedObject()));
 
         boolean hasOwnerController = results.stream()
-                .anyMatch(r -> r.getAffectedObject().equals("OwnerController"));
+                .anyMatch(r -> "OwnerController".equals(r.getAffectedObject()));
 
-        assertTrue(hasOwner);
-        assertTrue(results.get(0).getAffectedObject().equals("Owner"));
+        boolean hasStructuredEvidence = results.stream()
+                .flatMap(r -> r.getEvidencePath().stream())
+                .anyMatch(step -> step.contains("Matched SQL:"));
+
+        assertTrue(hasOwnerJdbcDao);
+        assertTrue(hasOwnerRepository);
+        assertTrue(hasOwnerService);
         assertTrue(hasOwnerController);
+        assertTrue(hasStructuredEvidence);
     }
 }

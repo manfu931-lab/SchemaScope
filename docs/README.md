@@ -1,134 +1,99 @@
 # SchemaScope
 
-SchemaScope 是一个面向 Java/Spring 项目的数据库 Schema 变更影响链分析平台。
+SchemaScope 是一个面向 Spring Boot / Java 项目的 **schema 变更影响分析与研发审查辅助系统**。  
+它的核心目标不是只做 schema diff，而是把数据库变更的影响链路一直追踪到：
 
-## 项目简介
+- SQL 访问点
+- Repository / DAO
+- Service
+- Controller / API
+- 测试建议与测试执行计划
+- PR Review 报告
+- 可视化证据图
 
-在真实软件开发中，数据库 Schema 变更往往具有高风险和强连锁性。  
-开发者在修改表结构、字段类型、索引或约束后，通常难以快速判断这次改动会影响哪些 SQL、哪些 Repository、哪些 Service、哪些接口以及哪些测试，从而导致联调成本高、问题定位慢、线上风险大。
+---
 
-SchemaScope 旨在解决这一问题：  
-系统以数据库变更为起点，自动分析并构建“Schema 变更 -> SQL -> 方法 -> 服务 -> 接口 -> 测试”的跨层影响链，输出风险排序和证据链结果，并支持在 Pull Request 场景下给出数据库变更审查建议。
+## 1. 项目定位
 
-## 目标用户
+传统 schema 变更评估往往依赖：
 
-- 后端开发工程师
-- 数据库开发/DBA
-- 架构师
-- 测试工程师
-- 研发效能/质量保障团队
+- 人工经验排查
+- grep 搜索
+- 类名 / 表名猜测
+- 事后接口回归
 
-## 典型场景
+这种方式存在两个问题：
 
-- 修改 migration 文件后，提前识别高风险代码位置
-- 在代码审查阶段自动发现破坏性数据库变更
-- 在联调前快速定位受影响接口和测试
-- 为数据库演进提供可解释的风险分析报告
+1. **解释性弱**：只能说“可能有影响”，很难说明为什么  
+2. **闭环不足**：即使知道组件受影响，也很难继续落到 API、测试和 review 决策
 
-## 核心能力
+SchemaScope 的定位是：  
+**把 schema change 转换成 evidence-driven 的研发影响分析与审查输出。**
 
-1. 数据库 Schema 变更识别
-2. Java/Spring 项目源码结构解析
-3. 多源 SQL 抽取与统一表示
-4. 数据库变更影响传播分析
-5. 风险评分与证据链生成
-6. Pull Request 自动化审查
+---
 
-## 项目创新点
+## 2. 当前能力
 
-### 1. 跨层影响链分析
-从数据库层出发，向上追踪到代码、接口与测试，而不是停留在数据库 Diff 层。
+当前版本已经支持以下能力：
 
-### 2. 多源数据访问统一建模
-统一抽取并表示 JPA、MyBatis、注解 SQL、JDBC 等不同访问方式。
+### 2.1 Schema 变更分析
+- 解析旧 schema / 新 schema
+- 生成 schema diff
+- 支持手工输入 change request
 
-### 3. 可解释风险排序
-不仅发现影响点，还对影响点进行风险评分和优先级排序，并展示证据链。
+### 2.2 SQL 证据提取
+- 提取 `@Query(...)`
+- 提取 `jdbcTemplate.query / update / queryForObject`
+- 抽取表名、列 token、SQL owner
 
-### 4. PR 审查集成
-将 Schema 变更分析嵌入 Pull Request 审查流程，推动数据库风险前置治理。
+### 2.3 Evidence-driven 命中与传播
+- `SchemaChange -> SQL Access Point`
+- `SQL Access Point -> Repository / DAO`
+- `Repository / DAO -> Service -> Controller`
+- 区分 `DIRECT / INDIRECT`
 
-## 支持范围（v1）
+### 2.4 结构化结果输出
+- risk score
+- risk level
+- confidence
+- evidence path
+- relation level
 
-- 语言：Java
-- 框架：Spring Boot
-- 数据访问：JPA / MyBatis XML / JDBC
-- 数据库：PostgreSQL
-- Migration：Flyway
+### 2.5 PR Review 输出
+- verdict（APPROVE / REVIEW_REQUIRED / BLOCK）
+- action items
+- review checklist
+- markdown comment
 
-## 暂不支持（v1）
+### 2.6 接口与测试影响补全
+- 识别受影响 endpoint
+- 生成 suggested tests
+- 生成 prioritized test execution plan
 
-- Kotlin
-- 多语言项目
-- jOOQ / QueryDSL
-- 多数据库自动适配
-- 高度动态反射 SQL 的完全精确分析
+### 2.7 可视化证据图
+- 导出 graph nodes / edges
+- 导出 Mermaid
+- 支持单独 graph API
 
-## 系统总体流程
+### 2.8 答辩展示包
+- metric cards
+- core highlights
+- demo steps
+- defense talking points
+- review report + graph 一体化输出
 
-1. 接入项目源码或仓库
-2. 识别本次 Schema 变更
-3. 抽取源码中的数据库访问对象
-4. 构建跨层依赖图
-5. 执行影响传播分析
-6. 进行风险评分与证据链生成
-7. 输出分析报告或 PR 审查意见
+---
 
-## 系统模块
+## 3. 系统主链路
 
-- project-ingest：项目接入与索引
-- schema-diff：数据库变更识别
-- code-parser：源码与 SQL 抽取
-- impact-graph：跨层依赖图构建
-- risk-engine：风险评分
-- review-engine：PR 审查与报告输出
-- web-console：可视化平台
+核心分析链如下：
 
-## 项目结构（建议）
-
-schemascope/
-- backend/
-  - parser/
-  - diff/
-  - graph/
-  - risk/
-  - review/
-  - api/
-- frontend/
-- benchmark/
-- docs/
-- scripts/
-
-## 第一阶段开发目标
-
-- 跑通 Schema Diff
-- 跑通 Java 项目解析
-- 完成直接命中分析
-- 输出基础影响对象列表
-
-## 第二阶段开发目标
-
-- 构建跨层依赖图
-- 实现影响传播算法
-- 实现风险评分模型
-- 完成可视化页面
-
-## 第三阶段开发目标
-
-- 接入 PR 审查流程
-- 完成实验评估
-- 打磨答辩演示与竞赛材料
-
-## 预期效果
-
-用户提交一次数据库变更后，系统能够在短时间内自动回答以下问题：
-
-- 这次数据库到底改了什么？
-- 哪些 SQL 会受影响？
-- 哪些方法、服务、接口会受影响？
-- 哪些测试需要补充或修改？
-- 哪些位置最危险，应该优先处理？
-
-## 项目愿景
-
-让数据库 Schema 演进从“人工经验排查”走向“自动化、可解释、前置化”的工程治理模式。
+```text
+Schema Change
+  -> SQL Access Extraction
+  -> SQL Match
+  -> Component Propagation
+  -> API / Test Surface Expansion
+  -> PR Review
+  -> Evidence Graph
+  -> Defense Showcase

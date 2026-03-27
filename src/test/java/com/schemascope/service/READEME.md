@@ -16,3 +16,7 @@ ExternalSchemaToProjectAnalysisTest.java
 ImpactCandidateGrouperTest.java 验证 ImpactCandidateGrouper 真的能把结果分成两组。
 ImpactResultGrouperTest.java 测试分组器能不能按 relationLevel 正确分组
 GroupedExternalAnalysisTest.java 用真实外部项目分析结果，验证分组结果是否符合预期
+SchemaChangeSqlMatcherTest.java 这一步的目标是把 SchemaChange -> SQL 命中层 独立跑通。
+SqlImpactPropagatorTest.java 
+MockAnalysisServiceEvidenceChainTest.java 
+MockPrReviewServiceTest.java 先从 service 层把“分析结果 -> review report”打通。

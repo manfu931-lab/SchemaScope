@@ -6,6 +6,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import static org.hamcrest.Matchers.containsString;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -87,33 +88,34 @@ class AnalysisControllerTest {
         }
         
         @Test
-        void shouldReturnMappedResultsForExternalProject() throws Exception {
-        String requestBody = """
-                {
-                "projectName": "spring-petclinic",
-                "projectPath": "D:/download/SchemaScope/benchmark/spring-petclinic",
-                "changeType": "DROP_COLUMN",
-                "tableName": "owners",
-                "columnName": "last_name",
-                "oldType": "VARCHAR(80)",
-                "newType": null,
-                "sourceFile": "manual-test"
-                }
-                """;
-
-        mockMvc.perform(post("/api/analysis")
-                        .contentType(MediaType.APPLICATION_JSON_VALUE)
-                        .content(requestBody))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$[0].changeId").value("chg-drop-column-owners-last-name"))
-                .andExpect(jsonPath("$[0].affectedObject").value("Owner"))
-                .andExpect(jsonPath("$[0].affectedType").value("ENTITY"))
-                .andExpect(jsonPath("$[0].riskLevel").value("HIGH"))
-                .andExpect(jsonPath("$[1].affectedObject").value("OwnerController"))
-                .andExpect(jsonPath("$[0].relationLevel").value("DIRECT"))
-                .andExpect(jsonPath("$[1].relationLevel").value("INDIRECT"));
+        void shouldReturnEvidenceDrivenResultsForLocalFixtureProject() throws Exception {
+            String requestBody = """
+                    {
+                      "projectName": "sql-demo-project",
+                      "projectPath": "src/test/resources/fixture/sql-demo-project",
+                      "changeType": "DROP_COLUMN",
+                      "tableName": "owners",
+                      "columnName": "last_name",
+                      "oldType": "VARCHAR(80)",
+                      "newType": null,
+                      "sourceFile": "manual-test"
+                    }
+                    """;
         
-}
+            mockMvc.perform(post("/api/analysis")
+                            .contentType(MediaType.APPLICATION_JSON_VALUE)
+                            .content(requestBody))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$").isArray())
+                    .andExpect(jsonPath("$[0].changeId").value("chg-drop-column-owners-last-name"))
+                    .andExpect(jsonPath("$[0].relationLevel").exists())
+                    .andExpect(jsonPath("$[0].evidencePath").isArray())
+                    .andExpect(content().string(containsString("OwnerJdbcDao")))
+                    .andExpect(content().string(containsString("OwnerRepository")))
+                    .andExpect(content().string(containsString("OwnerService")))
+                    .andExpect(content().string(containsString("OwnerController")))
+                    .andExpect(content().string(containsString("Matched SQL:")))
+                    .andExpect(content().string(containsString("Propagation:")));
+        }
 
 }

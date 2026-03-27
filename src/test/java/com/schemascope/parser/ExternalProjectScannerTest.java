@@ -4,26 +4,27 @@ import com.schemascope.domain.JavaComponentType;
 import com.schemascope.domain.JavaProjectScanResult;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
+
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExternalProjectScannerTest {
 
     @Test
-    void shouldScanSpringPetclinicProject() throws Exception {
+    void shouldScanLocalFixtureProject() throws Exception {
         SpringProjectScanner scanner = new SpringProjectScanner();
 
-        String projectRoot = "D:/download/SchemaScope/benchmark/spring-petclinic";
-        JavaProjectScanResult result = scanner.scan(projectRoot);
+        Path projectRoot = Path.of("src", "test", "resources", "fixture", "sql-demo-project")
+                .toAbsolutePath()
+                .normalize();
+
+        JavaProjectScanResult result = scanner.scan(projectRoot.toString());
 
         System.out.println(result);
 
-        assertTrue(result.getComponents().size() > 0);
-        assertTrue(
-                result.countByType(JavaComponentType.REST_CONTROLLER) >= 1
-                        || result.countByType(JavaComponentType.CONTROLLER) >= 1
-                        || result.countByType(JavaComponentType.SERVICE) >= 1
-                        || result.countByType(JavaComponentType.REPOSITORY) >= 1
-                        || result.countByType(JavaComponentType.ENTITY) >= 1
-        );
+        assertTrue(result.getComponents().size() >= 4);
+        assertTrue(result.countByType(JavaComponentType.REPOSITORY) >= 2);
+        assertTrue(result.countByType(JavaComponentType.SERVICE) >= 1);
+        assertTrue(result.countByType(JavaComponentType.REST_CONTROLLER) >= 1);
     }
 }

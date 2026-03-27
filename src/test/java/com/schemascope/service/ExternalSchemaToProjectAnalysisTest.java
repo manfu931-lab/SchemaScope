@@ -4,11 +4,12 @@ import com.schemascope.domain.AnalysisRequest;
 import com.schemascope.domain.ImpactResult;
 import com.schemascope.parser.SchemaFileReader;
 import com.schemascope.parser.SpringProjectScanner;
+import com.schemascope.parser.SqlAccessExtractor;
 import com.schemascope.schemadiff.SchemaDiffService;
 import com.schemascope.service.impl.MockAnalysisService;
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Paths;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -16,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ExternalSchemaToProjectAnalysisTest {
 
     @Test
-    void shouldAnalyzePetclinicSchemasAgainstPetclinicProject() {
+    void shouldAnalyzeLocalBenchmarkSchemasAgainstFixtureProject() {
         MockAnalysisService service = new MockAnalysisService(
                 new SimpleImpactAnalyzer(),
                 new SchemaChangeFactory(),
@@ -25,17 +26,29 @@ class ExternalSchemaToProjectAnalysisTest {
                 new SpringProjectScanner(),
                 new SchemaChangeComponentMapper(),
                 new ComponentImpactResultBuilder(),
-                new ImpactResultRanker()
+                new ImpactResultRanker(),
+                new SqlAccessExtractor(),
+                new SchemaChangeSqlMatcher(),
+                new SqlImpactPropagator()
         );
 
-        String oldPath = Paths.get("src", "test", "resources", "schema", "petclinic_schema_v1.sql").toString();
-        String newPath = Paths.get("src", "test", "resources", "schema", "petclinic_schema_v2.sql").toString();
+        Path oldPath = Path.of("src", "test", "resources", "benchmark", "sql-demo-schema", "schema_v1.sql")
+                .toAbsolutePath()
+                .normalize();
+
+        Path newPath = Path.of("src", "test", "resources", "benchmark", "sql-demo-schema", "schema_v2.sql")
+                .toAbsolutePath()
+                .normalize();
+
+        Path projectRoot = Path.of("src", "test", "resources", "fixture", "sql-demo-project")
+                .toAbsolutePath()
+                .normalize();
 
         AnalysisRequest request = new AnalysisRequest(
-                "spring-petclinic",
-                "D:/download/SchemaScope/benchmark/spring-petclinic",
-                oldPath,
-                newPath,
+                "sql-demo-project",
+                projectRoot.toString(),
+                oldPath.toString(),
+                newPath.toString(),
                 null,
                 null,
                 null,
@@ -48,17 +61,17 @@ class ExternalSchemaToProjectAnalysisTest {
 
         System.out.println(results);
 
-        boolean hasOwner = results.stream()
-                .anyMatch(r -> r.getAffectedObject().equals("Owner"));
+        boolean hasOwnerRepository = results.stream()
+                .anyMatch(r -> "OwnerRepository".equals(r.getAffectedObject()));
+
+        boolean hasOwnerService = results.stream()
+                .anyMatch(r -> "OwnerService".equals(r.getAffectedObject()));
 
         boolean hasOwnerController = results.stream()
-                .anyMatch(r -> r.getAffectedObject().equals("OwnerController"));
+                .anyMatch(r -> "OwnerController".equals(r.getAffectedObject()));
 
-        boolean hasPet = results.stream()
-                .anyMatch(r -> r.getAffectedObject().equals("Pet"));
-
-        assertTrue(hasOwner);
+        assertTrue(hasOwnerRepository);
+        assertTrue(hasOwnerService);
         assertTrue(hasOwnerController);
-        assertTrue(hasPet);
     }
 }
