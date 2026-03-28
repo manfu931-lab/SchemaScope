@@ -11,9 +11,17 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 public class SchemaChangeSqlMatcher {
+
+    private static final Pattern QUALIFIED_COLUMN_PATTERN =
+            Pattern.compile("([a-zA-Z_][a-zA-Z0-9_]*)\\.([`\"]?[a-zA-Z_][a-zA-Z0-9_]*[`\"]?)");
+
+    private static final Pattern TABLE_ALIAS_PATTERN =
+            Pattern.compile("(?i)\\b(from|join)\\s+[`\"]?([a-zA-Z0-9_]+)[`\"]?\\s+([a-zA-Z_][a-zA-Z0-9_]*)");
 
     public List<SqlImpactCandidate> match(SchemaChange change, List<SqlAccessPoint> accessPoints) {
         List<SqlImpactCandidate> candidates = new ArrayList<>();
@@ -27,7 +35,8 @@ public class SchemaChangeSqlMatcher {
 
         for (SqlAccessPoint accessPoint : accessPoints) {
             boolean tableMatched = matchesTable(accessPoint, expectedTableTokens);
-            boolean columnMatched = matchesColumn(accessPoint, expectedColumnTokens);
+            boolean columnMatched = matchesColumn(accessPoint, expectedColumnTokens)
+                    || matchesQualifiedColumns(accessPoint, expectedTableTokens, expectedColumnTokens);
 
             if (!shouldInclude(change, tableMatched, columnMatched)) {
                 continue;
@@ -97,12 +106,8 @@ public class SchemaChangeSqlMatcher {
         }
 
         for (String table : accessPoint.getReferencedTables()) {
-            String normalized = safeLower(table);
-            if (expectedTableTokens.contains(normalized)) {
-                return true;
-            }
-            String singular = singularize(normalized);
-            if (expectedTableTokens.contains(singular)) {
+            Set<String> normalizedTableTokens = normalizeTableTokens(table);
+            if (containsAny(normalizedTableTokens, expectedTableTokens)) {
                 return true;
             }
         }
@@ -117,28 +122,84 @@ public class SchemaChangeSqlMatcher {
 
         Set<String> sqlTokens = new LinkedHashSet<>();
         for (String token : accessPoint.getNormalizedTokens()) {
-            sqlTokens.add(safeLower(token));
+            sqlTokens.addAll(normalizeColumnTokens(token));
         }
 
-        for (String token : expectedColumnTokens) {
-            if (sqlTokens.contains(token)) {
+        return containsAny(sqlTokens, expectedColumnTokens);
+    }
+
+    private boolean matchesQualifiedColumns(SqlAccessPoint accessPoint,
+                                            Set<String> expectedTableTokens,
+                                            Set<String> expectedColumnTokens) {
+        if (accessPoint.getRawSql() == null || expectedColumnTokens.isEmpty() || expectedTableTokens.isEmpty()) {
+            return false;
+        }
+
+        List<TableAlias> aliases = extractTableAliases(accessPoint.getRawSql());
+        Matcher matcher = QUALIFIED_COLUMN_PATTERN.matcher(accessPoint.getRawSql());
+
+        while (matcher.find()) {
+            String qualifier = stripQuotes(matcher.group(1));
+            String column = stripQuotes(matcher.group(2));
+
+            boolean qualifierMatchesExpectedTable = containsAny(normalizeTableTokens(qualifier), expectedTableTokens);
+            boolean columnMatches = containsAny(normalizeColumnTokens(column), expectedColumnTokens);
+
+            if (qualifierMatchesExpectedTable && columnMatches) {
                 return true;
+            }
+
+            for (TableAlias alias : aliases) {
+                boolean aliasMatched = alias.alias.equalsIgnoreCase(qualifier)
+                        || alias.table.equalsIgnoreCase(qualifier);
+
+                boolean tableMatched = containsAny(normalizeTableTokens(alias.table), expectedTableTokens);
+
+                if (aliasMatched && tableMatched && columnMatches) {
+                    return true;
+                }
             }
         }
 
         return false;
     }
 
+    private List<TableAlias> extractTableAliases(String rawSql) {
+        List<TableAlias> aliases = new ArrayList<>();
+        Matcher matcher = TABLE_ALIAS_PATTERN.matcher(rawSql);
+
+        while (matcher.find()) {
+            aliases.add(new TableAlias(
+                    stripQuotes(matcher.group(2)),
+                    stripQuotes(matcher.group(3))
+            ));
+        }
+
+        return aliases;
+    }
+
     private Set<String> normalizeTableTokens(String tableName) {
         Set<String> tokens = new LinkedHashSet<>();
 
-        String normalized = safeLower(tableName).trim();
+        String normalized = toSnakeCase(stripQuotes(tableName).trim().toLowerCase());
         if (normalized.isBlank()) {
             return tokens;
         }
 
         tokens.add(normalized);
-        tokens.add(singularize(normalized));
+        tokens.add(normalized.replace("_", ""));
+
+        String singular = singularize(normalized);
+        if (!singular.isBlank()) {
+            tokens.add(singular);
+            tokens.add(singular.replace("_", ""));
+        }
+
+        String plural = pluralize(normalized);
+        if (!plural.isBlank()) {
+            tokens.add(plural);
+            tokens.add(plural.replace("_", ""));
+        }
 
         return tokens;
     }
@@ -146,44 +207,83 @@ public class SchemaChangeSqlMatcher {
     private Set<String> normalizeColumnTokens(String columnName) {
         Set<String> tokens = new LinkedHashSet<>();
 
-        String normalized = safeLower(columnName).trim();
+        String normalized = toSnakeCase(stripQuotes(columnName).trim().toLowerCase());
         if (normalized.isBlank()) {
             return tokens;
         }
 
         tokens.add(normalized);
-
-        String compact = normalized.replace("_", "");
-        if (!compact.isBlank()) {
-            tokens.add(compact);
-        }
-
-        for (String token : normalized.split("_")) {
-            if (!token.isBlank() && token.length() >= 2) {
-                tokens.add(token);
-            }
-        }
+        tokens.add(normalized.replace("_", ""));
 
         return tokens;
     }
 
-    private String singularize(String tableName) {
-        if (tableName == null || tableName.isBlank()) {
+    private boolean containsAny(Set<String> left, Set<String> right) {
+        for (String item : left) {
+            if (right.contains(item)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String pluralize(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        if (value.endsWith("s")) {
+            return value;
+        }
+        if (value.endsWith("y") && value.length() > 1) {
+            return value.substring(0, value.length() - 1) + "ies";
+        }
+        return value + "s";
+    }
+
+    private String singularize(String value) {
+        if (value == null || value.isBlank()) {
             return "";
         }
 
-        if (tableName.endsWith("ies") && tableName.length() > 3) {
-            return tableName.substring(0, tableName.length() - 3) + "y";
+        if (value.endsWith("ies") && value.length() > 3) {
+            return value.substring(0, value.length() - 3) + "y";
         }
 
-        if (tableName.endsWith("s") && tableName.length() > 1) {
-            return tableName.substring(0, tableName.length() - 1);
+        if (value.endsWith("s") && value.length() > 1) {
+            return value.substring(0, value.length() - 1);
         }
 
-        return tableName;
+        return value;
     }
 
-    private String safeLower(String value) {
-        return value == null ? "" : value.toLowerCase();
+    private String toSnakeCase(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+
+        String stripped = stripQuotes(value);
+        String withUnderscores = stripped
+                .replaceAll("([a-z0-9])([A-Z])", "$1_$2")
+                .replace('-', '_')
+                .toLowerCase();
+
+        return withUnderscores.replaceAll("__+", "_");
+    }
+
+    private String stripQuotes(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("`", "").replace("\"", "");
+    }
+
+    private static class TableAlias {
+        private final String table;
+        private final String alias;
+
+        private TableAlias(String table, String alias) {
+            this.table = table;
+            this.alias = alias;
+        }
     }
 }

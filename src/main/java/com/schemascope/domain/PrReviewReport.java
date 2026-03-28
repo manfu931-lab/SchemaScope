@@ -23,6 +23,7 @@ public class PrReviewReport {
     private List<TestImpactHint> suggestedTests = new ArrayList<>();
     private TestExecutionPlan testExecutionPlan;
     private EvidenceGraphExport evidenceGraph;
+    private AiReviewResult aiReview;
     private String markdownComment;
 
     public PrReviewReport() {
@@ -44,6 +45,7 @@ public class PrReviewReport {
                           List<TestImpactHint> suggestedTests,
                           TestExecutionPlan testExecutionPlan,
                           EvidenceGraphExport evidenceGraph,
+                          AiReviewResult aiReview,
                           String markdownComment) {
         this.projectName = projectName;
         this.reviewTitle = reviewTitle;
@@ -61,6 +63,7 @@ public class PrReviewReport {
         this.suggestedTests = suggestedTests == null ? new ArrayList<>() : suggestedTests;
         this.testExecutionPlan = testExecutionPlan;
         this.evidenceGraph = evidenceGraph;
+        this.aiReview = aiReview;
         this.markdownComment = markdownComment;
     }
 
@@ -192,6 +195,14 @@ public class PrReviewReport {
         this.evidenceGraph = evidenceGraph;
     }
 
+    public AiReviewResult getAiReview() {
+        return aiReview;
+    }
+
+    public void setAiReview(AiReviewResult aiReview) {
+        this.aiReview = aiReview;
+    }
+
     public String getMarkdownComment() {
         return markdownComment;
     }
@@ -219,6 +230,7 @@ public class PrReviewReport {
                 ", suggestedTests=" + suggestedTests +
                 ", testExecutionPlan=" + testExecutionPlan +
                 ", evidenceGraph=" + evidenceGraph +
+                ", aiReview=" + aiReview +
                 ", markdownComment='" + markdownComment + '\'' +
                 '}';
     }

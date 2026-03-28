@@ -19,7 +19,7 @@ class ReviewControllerTest {
     private MockMvc mockMvc;
 
     @Test
-    void shouldReturnPullRequestReviewReportWithEvidenceGraph() throws Exception {
+    void shouldReturnPullRequestReviewReportWithAiReview() throws Exception {
         String requestBody = """
                 {
                   "projectName": "sql-demo-project",
@@ -39,12 +39,14 @@ class ReviewControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.projectName").value("sql-demo-project"))
                 .andExpect(jsonPath("$.verdict").value("BLOCK"))
-                .andExpect(jsonPath("$.evidenceGraph").exists())
-                .andExpect(jsonPath("$.evidenceGraph.nodes").isArray())
-                .andExpect(jsonPath("$.evidenceGraph.edges").isArray())
-                .andExpect(jsonPath("$.evidenceGraph.mermaid").exists())
-                .andExpect(content().string(containsString("Evidence graph")))
-                .andExpect(content().string(containsString("graph TD")))
-                .andExpect(content().string(containsString("OwnerController")));
+                .andExpect(jsonPath("$.aiReview").exists())
+                .andExpect(jsonPath("$.aiReview.mode").exists())
+                .andExpect(jsonPath("$.aiReview.provider").exists())
+                .andExpect(jsonPath("$.aiReview.executiveSummary").exists())
+                .andExpect(jsonPath("$.aiReview.findings").isArray())
+                .andExpect(jsonPath("$.aiReview.recommendedChecks").isArray())
+                .andExpect(content().string(containsString("AI review augmentation")))
+                .andExpect(content().string(containsString("OwnerController")))
+                .andExpect(content().string(containsString("graph TD")));
     }
 }

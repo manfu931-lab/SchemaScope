@@ -2,6 +2,7 @@ package com.schemascope.service.impl;
 
 import com.schemascope.domain.*;
 import com.schemascope.service.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -15,6 +16,7 @@ public class MockPrReviewService implements PrReviewService {
     private final ImpactSurfaceBuilder impactSurfaceBuilder;
     private final TestImpactPlanner testImpactPlanner;
     private final EvidenceGraphExporter evidenceGraphExporter;
+    private final AiReviewService aiReviewService;
 
     public MockPrReviewService(AnalysisService analysisService,
                                ImpactResultGrouper impactResultGrouper,
@@ -22,12 +24,30 @@ public class MockPrReviewService implements PrReviewService {
                                ImpactSurfaceBuilder impactSurfaceBuilder,
                                TestImpactPlanner testImpactPlanner,
                                EvidenceGraphExporter evidenceGraphExporter) {
+        this(analysisService,
+                impactResultGrouper,
+                prReviewReportBuilder,
+                impactSurfaceBuilder,
+                testImpactPlanner,
+                evidenceGraphExporter,
+                (request, report) -> new RuleBasedAiReviewService().review(request, report));
+    }
+
+    @Autowired
+    public MockPrReviewService(AnalysisService analysisService,
+                               ImpactResultGrouper impactResultGrouper,
+                               PrReviewReportBuilder prReviewReportBuilder,
+                               ImpactSurfaceBuilder impactSurfaceBuilder,
+                               TestImpactPlanner testImpactPlanner,
+                               EvidenceGraphExporter evidenceGraphExporter,
+                               AiReviewService aiReviewService) {
         this.analysisService = analysisService;
         this.impactResultGrouper = impactResultGrouper;
         this.prReviewReportBuilder = prReviewReportBuilder;
         this.impactSurfaceBuilder = impactSurfaceBuilder;
         this.testImpactPlanner = testImpactPlanner;
         this.evidenceGraphExporter = evidenceGraphExporter;
+        this.aiReviewService = aiReviewService;
     }
 
     @Override
@@ -37,30 +57,39 @@ public class MockPrReviewService implements PrReviewService {
         ImpactSurfaceSummary surfaceSummary = buildSurfaceSummarySafely(request, results);
         TestExecutionPlan testExecutionPlan = testImpactPlanner.buildPlan(results, surfaceSummary);
 
-        PrReviewReport report = prReviewReportBuilder.build(
+        PrReviewReport baseReport = prReviewReportBuilder.build(
                 request,
                 results,
                 groupedResults,
                 surfaceSummary,
                 testExecutionPlan,
+                null,
                 null
         );
 
-        EvidenceGraphExport evidenceGraph = evidenceGraphExporter.export(request, report);
-        report.setEvidenceGraph(evidenceGraph);
+        EvidenceGraphExport evidenceGraph = evidenceGraphExporter.export(request, baseReport);
 
-        report.setMarkdownComment(
-                prReviewReportBuilder.build(
-                        request,
-                        results,
-                        groupedResults,
-                        surfaceSummary,
-                        testExecutionPlan,
-                        evidenceGraph
-                ).getMarkdownComment()
+        PrReviewReport graphReadyReport = prReviewReportBuilder.build(
+                request,
+                results,
+                groupedResults,
+                surfaceSummary,
+                testExecutionPlan,
+                evidenceGraph,
+                null
         );
 
-        return report;
+        AiReviewResult aiReview = aiReviewService.review(request, graphReadyReport);
+
+        return prReviewReportBuilder.build(
+                request,
+                results,
+                groupedResults,
+                surfaceSummary,
+                testExecutionPlan,
+                evidenceGraph,
+                aiReview
+        );
     }
 
     private ImpactSurfaceSummary buildSurfaceSummarySafely(AnalysisRequest request, List<ImpactResult> results) {

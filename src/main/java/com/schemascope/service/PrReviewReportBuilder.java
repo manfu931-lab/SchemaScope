@@ -16,6 +16,16 @@ public class PrReviewReportBuilder {
                                 ImpactSurfaceSummary surfaceSummary,
                                 TestExecutionPlan testExecutionPlan,
                                 EvidenceGraphExport evidenceGraph) {
+        return build(request, results, groupedResults, surfaceSummary, testExecutionPlan, evidenceGraph, null);
+    }
+
+    public PrReviewReport build(AnalysisRequest request,
+                                List<ImpactResult> results,
+                                GroupedImpactResults groupedResults,
+                                ImpactSurfaceSummary surfaceSummary,
+                                TestExecutionPlan testExecutionPlan,
+                                EvidenceGraphExport evidenceGraph,
+                                AiReviewResult aiReview) {
         List<ImpactResult> safeResults = results == null ? new ArrayList<>() : results;
         GroupedImpactResults safeGroupedResults = groupedResults == null
                 ? new GroupedImpactResults(new ArrayList<>(), new ArrayList<>())
@@ -46,6 +56,7 @@ public class PrReviewReportBuilder {
                 safeSurfaceSummary,
                 safePlan,
                 evidenceGraph,
+                aiReview,
                 actionItems
         );
 
@@ -66,6 +77,7 @@ public class PrReviewReportBuilder {
                 safeSurfaceSummary.getSuggestedTests(),
                 safePlan,
                 evidenceGraph,
+                aiReview,
                 markdownComment
         );
     }
@@ -243,6 +255,7 @@ public class PrReviewReportBuilder {
                                         ImpactSurfaceSummary surfaceSummary,
                                         TestExecutionPlan testExecutionPlan,
                                         EvidenceGraphExport evidenceGraph,
+                                        AiReviewResult aiReview,
                                         List<ReviewActionItem> actionItems) {
         StringBuilder sb = new StringBuilder();
 
@@ -260,6 +273,10 @@ public class PrReviewReportBuilder {
         if (evidenceGraph != null) {
             sb.append("- Graph nodes: ").append(evidenceGraph.getNodes().size()).append("\n");
             sb.append("- Graph edges: ").append(evidenceGraph.getEdges().size()).append("\n");
+        }
+        if (aiReview != null) {
+            sb.append("- AI review mode: ").append(aiReview.getMode()).append("\n");
+            sb.append("- AI provider: ").append(aiReview.getProvider()).append("\n");
         }
         sb.append("\n");
 
@@ -281,6 +298,31 @@ public class PrReviewReportBuilder {
                         .append(" / score=")
                         .append(String.format("%.1f", result.getRiskScore()))
                         .append("\n");
+            }
+            sb.append("\n");
+        }
+
+        sb.append("## AI review augmentation\n");
+        if (aiReview == null) {
+            sb.append("- No AI review result generated.\n\n");
+        } else {
+            sb.append("- Summary: ").append(aiReview.getExecutiveSummary()).append("\n");
+            for (AiReviewFinding finding : aiReview.getFindings()) {
+                sb.append("- ")
+                        .append(finding.getTitle())
+                        .append(" [")
+                        .append(finding.getRiskLevel())
+                        .append(", confidence=")
+                        .append(String.format("%.2f", finding.getConfidence()))
+                        .append("]: ")
+                        .append(finding.getDetail())
+                        .append("\n");
+            }
+            if (!aiReview.getRecommendedChecks().isEmpty()) {
+                sb.append("- Recommended checks:\n");
+                for (String check : aiReview.getRecommendedChecks()) {
+                    sb.append("  - ").append(check).append("\n");
+                }
             }
             sb.append("\n");
         }

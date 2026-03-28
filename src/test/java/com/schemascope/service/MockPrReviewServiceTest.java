@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MockPrReviewServiceTest {
 
     @Test
-    void shouldBuildPullRequestReviewReportWithEvidenceGraph() {
+    void shouldBuildPullRequestReviewReportWithAiReview() {
         Path projectRoot = Path.of("src", "test", "resources", "fixture", "sql-demo-project")
                 .toAbsolutePath()
                 .normalize();
@@ -65,11 +65,13 @@ class MockPrReviewServiceTest {
         System.out.println("PR review report = " + report);
 
         assertEquals(ReviewVerdict.BLOCK, report.getVerdict());
-        assertTrue(report.getEvidenceGraph() != null);
-        assertTrue(report.getEvidenceGraph().getNodes().size() >= 5);
-        assertTrue(report.getEvidenceGraph().getEdges().size() >= 4);
-        assertTrue(report.getEvidenceGraph().getMermaid().contains("graph TD"));
-        assertTrue(report.getMarkdownComment().contains("## Evidence graph"));
-        assertTrue(report.getMarkdownComment().contains("```mermaid"));
+        assertTrue(report.getAiReview() != null);
+        assertTrue(report.getAiReview().getExecutiveSummary() != null
+                && !report.getAiReview().getExecutiveSummary().isBlank());
+        assertTrue(report.getAiReview().getFindings().size() >= 2);
+        assertTrue(report.getAiReview().getRecommendedChecks().size() >= 1);
+        assertTrue(report.getMarkdownComment().contains("## AI review augmentation"));
+        assertTrue(report.getMarkdownComment().contains("Breaking schema change")
+                || report.getMarkdownComment().contains("Direct impact chain"));
     }
 }

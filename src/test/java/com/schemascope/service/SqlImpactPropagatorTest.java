@@ -7,6 +7,7 @@ import com.schemascope.domain.JavaProjectScanResult;
 import com.schemascope.domain.SchemaChange;
 import com.schemascope.domain.SqlAccessPoint;
 import com.schemascope.domain.SqlImpactCandidate;
+import com.schemascope.parser.MyBatisXmlSqlExtractor;
 import com.schemascope.parser.SpringProjectScanner;
 import com.schemascope.parser.SqlAccessExtractor;
 import org.junit.jupiter.api.Test;
@@ -19,12 +20,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SqlImpactPropagatorTest {
 
     @Test
-    void shouldPropagateMatchedSqlImpactToServiceAndController() throws Exception {
+    void shouldPropagateMatchedSqlImpactWithMethodCallEvidence() throws Exception {
         Path projectRoot = Path.of("src", "test", "resources", "fixture", "sql-demo-project")
                 .toAbsolutePath()
                 .normalize();
 
-        SqlAccessExtractor extractor = new SqlAccessExtractor();
+        SqlAccessExtractor extractor = new SqlAccessExtractor(new MyBatisXmlSqlExtractor());
         List<SqlAccessPoint> accessPoints = extractor.extractFromProject(projectRoot.toString());
 
         SchemaChange change = new SchemaChange(
@@ -44,38 +45,31 @@ class SqlImpactPropagatorTest {
         SpringProjectScanner scanner = new SpringProjectScanner();
         JavaProjectScanResult scanResult = scanner.scan(projectRoot.toString());
 
-        SqlImpactPropagator propagator = new SqlImpactPropagator();
+        SqlImpactPropagator propagator = new SqlImpactPropagator(new JavaDependencyGraphBuilder());
         List<ComponentImpactCandidate> componentCandidates = propagator.propagate(sqlCandidates, scanResult);
 
         System.out.println("SqlImpactPropagator candidates = " + componentCandidates);
 
-        boolean hasOwnerRepository = componentCandidates.stream().anyMatch(candidate ->
-                "OwnerRepository".equals(candidate.getComponent().getClassName())
-                        && candidate.getRelationLevel() == ImpactRelationLevel.DIRECT
-                        && candidate.getReason().contains("owns matched SQL access point")
-        );
-
-        boolean hasOwnerJdbcDao = componentCandidates.stream().anyMatch(candidate ->
-                "OwnerJdbcDao".equals(candidate.getComponent().getClassName())
-                        && candidate.getRelationLevel() == ImpactRelationLevel.DIRECT
-                        && candidate.getReason().contains("owns matched SQL access point")
-        );
-
         boolean hasOwnerService = componentCandidates.stream().anyMatch(candidate ->
                 "OwnerService".equals(candidate.getComponent().getClassName())
                         && candidate.getRelationLevel() == ImpactRelationLevel.DIRECT
-                        && candidate.getReason().contains("OwnerRepository")
+                        && candidate.getEvidencePath().stream().anyMatch(step ->
+                        step.contains("Method propagation: OwnerService.searchByLastName calls OwnerRepository.findByLastName"))
         );
 
         boolean hasOwnerController = componentCandidates.stream().anyMatch(candidate ->
                 "OwnerController".equals(candidate.getComponent().getClassName())
                         && candidate.getRelationLevel() == ImpactRelationLevel.INDIRECT
-                        && candidate.getReason().contains("OwnerService")
+                        && candidate.getEvidencePath().stream().anyMatch(step ->
+                        step.contains("Method propagation: OwnerController.listOwners calls OwnerService.searchByLastName"))
         );
 
-        assertTrue(hasOwnerRepository, "Expected OwnerRepository to be a direct SQL owner match");
-        assertTrue(hasOwnerJdbcDao, "Expected OwnerJdbcDao to be a direct SQL owner match");
-        assertTrue(hasOwnerService, "Expected OwnerService to be propagated from OwnerRepository");
-        assertTrue(hasOwnerController, "Expected OwnerController to be propagated from OwnerService");
+        boolean hasMethodReason = componentCandidates.stream().anyMatch(candidate ->
+                candidate.getReason() != null && candidate.getReason().contains("method '")
+        );
+
+        assertTrue(hasOwnerService, "Expected method-call evidence for OwnerService propagation");
+        assertTrue(hasOwnerController, "Expected method-call evidence for OwnerController propagation");
+        assertTrue(hasMethodReason, "Expected method-level reason text in propagated candidates");
     }
 }

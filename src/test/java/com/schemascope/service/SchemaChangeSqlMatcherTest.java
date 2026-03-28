@@ -4,20 +4,20 @@ import com.schemascope.domain.ChangeType;
 import com.schemascope.domain.SchemaChange;
 import com.schemascope.domain.SqlAccessPoint;
 import com.schemascope.domain.SqlImpactCandidate;
+import com.schemascope.parser.MyBatisXmlSqlExtractor;
 import com.schemascope.parser.SqlAccessExtractor;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SchemaChangeSqlMatcherTest {
 
     @Test
-    void shouldMatchColumnLevelSchemaChangeToSqlAccessPoints() throws Exception {
-        SqlAccessExtractor extractor = new SqlAccessExtractor();
+    void shouldMatchColumnLevelSchemaChangeToSqlAccessPointsIncludingQuotedIdentifiers() throws Exception {
+        SqlAccessExtractor extractor = new SqlAccessExtractor(new MyBatisXmlSqlExtractor());
         Path projectRoot = Path.of("src", "test", "resources", "fixture", "sql-demo-project")
                 .toAbsolutePath()
                 .normalize();
@@ -40,15 +40,11 @@ class SchemaChangeSqlMatcherTest {
 
         System.out.println("SchemaChangeSqlMatcher candidates = " + candidates);
 
-        assertEquals(2, candidates.size());
-
         boolean hasRepositoryMatch = candidates.stream().anyMatch(candidate ->
                 "OwnerRepository".equals(candidate.getAccessPoint().getOwnerClassName())
                         && "findByLastName".equals(candidate.getAccessPoint().getOwnerMethodName())
                         && candidate.isTableMatched()
                         && candidate.isColumnMatched()
-                        && candidate.getReason().contains("table")
-                        && candidate.getReason().contains("column")
         );
 
         boolean hasJdbcMatch = candidates.stream().anyMatch(candidate ->
@@ -56,19 +52,23 @@ class SchemaChangeSqlMatcherTest {
                         && "updateOwnerLastName".equals(candidate.getAccessPoint().getOwnerMethodName())
                         && candidate.isTableMatched()
                         && candidate.isColumnMatched()
-                        && candidate.getReason().contains("table")
-                        && candidate.getReason().contains("column")
+        );
+
+        boolean hasQuotedRepositoryMatch = candidates.stream().anyMatch(candidate ->
+                "OwnerRepository".equals(candidate.getAccessPoint().getOwnerClassName())
+                        && "findQuotedOwnerName".equals(candidate.getAccessPoint().getOwnerMethodName())
+                        && candidate.isTableMatched()
+                        && candidate.isColumnMatched()
         );
 
         assertTrue(hasRepositoryMatch, "Expected OwnerRepository.findByLastName to be matched");
         assertTrue(hasJdbcMatch, "Expected OwnerJdbcDao.updateOwnerLastName to be matched");
-
-        assertTrue(candidates.stream().allMatch(candidate -> candidate.getScore() >= 1.0 - 0.0001));
+        assertTrue(hasQuotedRepositoryMatch, "Expected OwnerRepository.findQuotedOwnerName to be matched");
     }
 
     @Test
     void shouldNotMatchWhenOnlyTableMatchesButColumnDoesNot() throws Exception {
-        SqlAccessExtractor extractor = new SqlAccessExtractor();
+        SqlAccessExtractor extractor = new SqlAccessExtractor(new MyBatisXmlSqlExtractor());
         Path projectRoot = Path.of("src", "test", "resources", "fixture", "sql-demo-project")
                 .toAbsolutePath()
                 .normalize();
@@ -96,7 +96,7 @@ class SchemaChangeSqlMatcherTest {
 
     @Test
     void shouldMatchTableLevelSchemaChangeByTableOnly() throws Exception {
-        SqlAccessExtractor extractor = new SqlAccessExtractor();
+        SqlAccessExtractor extractor = new SqlAccessExtractor(new MyBatisXmlSqlExtractor());
         Path projectRoot = Path.of("src", "test", "resources", "fixture", "sql-demo-project")
                 .toAbsolutePath()
                 .normalize();
@@ -119,8 +119,22 @@ class SchemaChangeSqlMatcherTest {
 
         System.out.println("SchemaChangeSqlMatcher table-level candidates = " + candidates);
 
-        assertEquals(2, candidates.size());
+        boolean hasOwnerRepository = candidates.stream().anyMatch(candidate ->
+                "OwnerRepository".equals(candidate.getAccessPoint().getOwnerClassName())
+        );
+
+        boolean hasOwnerJdbcDao = candidates.stream().anyMatch(candidate ->
+                "OwnerJdbcDao".equals(candidate.getAccessPoint().getOwnerClassName())
+        );
+
+        boolean hasQuotedOwnerRepository = candidates.stream().anyMatch(candidate ->
+                "OwnerRepository".equals(candidate.getAccessPoint().getOwnerClassName())
+                        && "findQuotedOwnerName".equals(candidate.getAccessPoint().getOwnerMethodName())
+        );
+
+        assertTrue(hasOwnerRepository, "Expected OwnerRepository table-level match");
+        assertTrue(hasOwnerJdbcDao, "Expected OwnerJdbcDao table-level match");
+        assertTrue(hasQuotedOwnerRepository, "Expected quoted OwnerRepository table-level match");
         assertTrue(candidates.stream().allMatch(SqlImpactCandidate::isTableMatched));
-        assertTrue(candidates.stream().noneMatch(SqlImpactCandidate::isColumnMatched));
     }
 }

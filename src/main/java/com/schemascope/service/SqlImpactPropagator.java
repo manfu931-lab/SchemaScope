@@ -4,14 +4,13 @@ import com.schemascope.domain.ComponentImpactCandidate;
 import com.schemascope.domain.ImpactRelationLevel;
 import com.schemascope.domain.JavaComponent;
 import com.schemascope.domain.JavaComponentType;
+import com.schemascope.domain.JavaDependencyEdge;
+import com.schemascope.domain.JavaDependencyGraph;
 import com.schemascope.domain.JavaProjectScanResult;
 import com.schemascope.domain.SqlImpactCandidate;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -21,12 +20,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 @Component
 public class SqlImpactPropagator {
 
     private static final int MAX_DEPTH = 2;
+
+    private final JavaDependencyGraphBuilder javaDependencyGraphBuilder;
+
+    public SqlImpactPropagator() {
+        this(new JavaDependencyGraphBuilder());
+    }
+
+    public SqlImpactPropagator(JavaDependencyGraphBuilder javaDependencyGraphBuilder) {
+        this.javaDependencyGraphBuilder = javaDependencyGraphBuilder;
+    }
 
     public List<ComponentImpactCandidate> propagate(List<SqlImpactCandidate> sqlCandidates,
                                                     JavaProjectScanResult scanResult) throws IOException {
@@ -37,7 +45,7 @@ public class SqlImpactPropagator {
         }
 
         Map<String, JavaComponent> componentsByName = indexComponents(scanResult);
-        Map<String, String> sourceTextByClass = loadSourceText(scanResult);
+        JavaDependencyGraph dependencyGraph = javaDependencyGraphBuilder.build(scanResult);
 
         Map<String, ComponentImpactCandidate> bestCandidateByClass = new LinkedHashMap<>();
         Queue<PropagationNode> queue = new ArrayDeque<>();
@@ -97,13 +105,25 @@ public class SqlImpactPropagator {
                 continue;
             }
 
-            for (JavaComponent dependent : findDependents(current.className, scanResult, sourceTextByClass)) {
-                String edgeKey = current.className + "->" + dependent.getClassName();
+            for (JavaDependencyEdge edge : dependencyGraph.findDependentsOf(current.className)) {
+                String dependentClassName = edge.getDependentClassName();
+                JavaComponent dependent = componentsByName.get(dependentClassName.toLowerCase());
+                if (dependent == null) {
+                    continue;
+                }
+
+                String edgeKey = edge.getDependencyClassName() + "->" + edge.getDependentClassName()
+                        + "#" + edge.getEvidenceType()
+                        + "#" + safe(edge.getDependentMethodName())
+                        + "#" + safe(edge.getDependencyMethodName());
+
                 if (!visitedEdges.add(edgeKey)) {
                     continue;
                 }
 
-                double propagatedScore = scoreForNextHop(current.score, current.depth + 1, dependent.getComponentType());
+                double propagatedScore = scoreForNextHop(current.score, current.depth + 1,
+                        dependent.getComponentType(), edge.getEvidenceType());
+
                 if (propagatedScore < 0.60) {
                     continue;
                 }
@@ -111,13 +131,13 @@ public class SqlImpactPropagator {
                 ImpactRelationLevel relationLevel = resolvePropagatedRelation(current.depth + 1, dependent.getComponentType());
 
                 List<String> propagatedEvidencePath = new ArrayList<>(current.evidencePath);
-                propagatedEvidencePath.add("Propagation: " + dependent.getClassName() + " references " + current.className);
+                propagatedEvidencePath.add(buildPropagationStep(current.className, dependent.getClassName(), edge));
+                propagatedEvidencePath.add("Dependency evidence: " + edge.getEvidenceText().trim());
 
                 ComponentImpactCandidate candidate = new ComponentImpactCandidate(
                         dependent,
                         propagatedScore,
-                        "references '" + current.className + "' which traces back to matched SQL owner '"
-                                + current.rootSqlOwnerClass + "'",
+                        buildReason(current.className, current.rootSqlOwnerClass, edge),
                         relationLevel,
                         propagatedEvidencePath
                 );
@@ -152,48 +172,36 @@ public class SqlImpactPropagator {
         return map;
     }
 
-    private Map<String, String> loadSourceText(JavaProjectScanResult scanResult) throws IOException {
-        Map<String, String> map = new LinkedHashMap<>();
-
-        for (JavaComponent component : scanResult.getComponents()) {
-            if (component.getClassName() == null || component.getFilePath() == null) {
-                continue;
-            }
-
-            Path filePath = Path.of(component.getFilePath());
-            if (!Files.exists(filePath)) {
-                continue;
-            }
-
-            String content = Files.readString(filePath, StandardCharsets.UTF_8);
-            map.put(component.getClassName(), content);
+    private String buildPropagationStep(String dependencyClassName,
+                                        String dependentClassName,
+                                        JavaDependencyEdge edge) {
+        if ("METHOD_CALL".equals(edge.getEvidenceType())
+                && edge.getDependentMethodName() != null
+                && edge.getDependencyMethodName() != null) {
+            return "Method propagation: "
+                    + dependentClassName + "." + edge.getDependentMethodName()
+                    + " calls "
+                    + dependencyClassName + "." + edge.getDependencyMethodName();
         }
 
-        return map;
+        return "Propagation: " + dependentClassName
+                + " depends on " + dependencyClassName
+                + " via " + edge.getEvidenceType();
     }
 
-    private List<JavaComponent> findDependents(String dependencyClassName,
-                                               JavaProjectScanResult scanResult,
-                                               Map<String, String> sourceTextByClass) {
-        List<JavaComponent> dependents = new ArrayList<>();
-        Pattern pattern = Pattern.compile("\\b" + Pattern.quote(dependencyClassName) + "\\b");
-
-        for (JavaComponent component : scanResult.getComponents()) {
-            if (component.getClassName() == null || component.getClassName().equals(dependencyClassName)) {
-                continue;
-            }
-
-            String source = sourceTextByClass.get(component.getClassName());
-            if (source == null || source.isBlank()) {
-                continue;
-            }
-
-            if (pattern.matcher(source).find()) {
-                dependents.add(component);
-            }
+    private String buildReason(String dependencyClassName,
+                               String rootSqlOwnerClass,
+                               JavaDependencyEdge edge) {
+        if ("METHOD_CALL".equals(edge.getEvidenceType())
+                && edge.getDependentMethodName() != null
+                && edge.getDependencyMethodName() != null) {
+            return "method '" + edge.getDependentMethodName()
+                    + "' calls '" + dependencyClassName + "." + edge.getDependencyMethodName()
+                    + "' which traces back to matched SQL owner '" + rootSqlOwnerClass + "'";
         }
 
-        return dependents;
+        return "depends on '" + dependencyClassName
+                + "' which traces back to matched SQL owner '" + rootSqlOwnerClass + "'";
     }
 
     private void upsert(Map<String, ComponentImpactCandidate> bestCandidateByClass,
@@ -241,13 +249,20 @@ public class SqlImpactPropagator {
         existing.setEvidencePath(merged);
     }
 
-    private double scoreForNextHop(double parentScore, int nextDepth, JavaComponentType type) {
+    private double scoreForNextHop(double parentScore,
+                                   int nextDepth,
+                                   JavaComponentType type,
+                                   String evidenceType) {
         double score = parentScore - 0.15;
 
         if (type == JavaComponentType.SERVICE) {
             score += 0.05;
         } else if (type == JavaComponentType.CONTROLLER || type == JavaComponentType.REST_CONTROLLER) {
             score -= 0.02;
+        }
+
+        if ("METHOD_CALL".equals(evidenceType)) {
+            score += 0.04;
         }
 
         if (nextDepth >= 2) {
@@ -283,6 +298,10 @@ public class SqlImpactPropagator {
             return "";
         }
         return sql.replaceAll("\\s+", " ").trim();
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value;
     }
 
     private static class PropagationNode {

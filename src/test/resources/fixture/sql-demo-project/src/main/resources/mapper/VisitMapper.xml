@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<mapper namespace="com.example.demo.VisitMapper">
+
+    <select id="findVisitById" resultType="map">
+        select id, pet_id, visit_date
+        from visits
+        where id = #{id}
+    </select>
+
+    <update id="updateVisitDescription">
+        update visits
+        set description = #{description}
+        where id = #{id}
+    </update>
+
+</mapper>

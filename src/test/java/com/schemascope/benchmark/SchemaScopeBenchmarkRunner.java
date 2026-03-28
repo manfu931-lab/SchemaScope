@@ -3,12 +3,14 @@ package com.schemascope.benchmark;
 import com.schemascope.domain.AnalysisRequest;
 import com.schemascope.domain.ImpactRelationLevel;
 import com.schemascope.domain.ImpactResult;
+import com.schemascope.parser.MyBatisXmlSqlExtractor;
 import com.schemascope.parser.SchemaFileReader;
 import com.schemascope.parser.SpringProjectScanner;
 import com.schemascope.parser.SqlAccessExtractor;
 import com.schemascope.schemadiff.SchemaDiffService;
 import com.schemascope.service.ComponentImpactResultBuilder;
 import com.schemascope.service.ImpactResultRanker;
+import com.schemascope.service.JavaDependencyGraphBuilder;
 import com.schemascope.service.SchemaChangeComponentMapper;
 import com.schemascope.service.SchemaChangeFactory;
 import com.schemascope.service.SchemaChangeSqlMatcher;
@@ -35,9 +37,9 @@ public class SchemaScopeBenchmarkRunner {
                 new SchemaChangeComponentMapper(),
                 new ComponentImpactResultBuilder(),
                 new ImpactResultRanker(),
-                new SqlAccessExtractor(),
+                new SqlAccessExtractor(new MyBatisXmlSqlExtractor()),
                 new SchemaChangeSqlMatcher(),
-                new SqlImpactPropagator()
+                new SqlImpactPropagator(new JavaDependencyGraphBuilder())
         );
     }
 
@@ -49,6 +51,14 @@ public class SchemaScopeBenchmarkRunner {
         }
 
         return new BenchmarkSuiteResult(caseResults);
+    }
+
+    public BenchmarkSuiteResult runProjectSpecs(List<BenchmarkProjectSpec> projectSpecs) {
+        List<BenchmarkCase> allCases = new ArrayList<>();
+        for (BenchmarkProjectSpec spec : projectSpecs) {
+            allCases.addAll(spec.toBenchmarkCases());
+        }
+        return runAll(allCases);
     }
 
     public BenchmarkCaseResult runCase(BenchmarkCase benchmarkCase) {
@@ -110,7 +120,9 @@ public class SchemaScopeBenchmarkRunner {
             boolean hasEvidenceSignal = matched.getEvidencePath().stream().anyMatch(step ->
                     step.contains("Matched SQL:")
                             || step.contains("Propagation:")
+                            || step.contains("Method propagation:")
                             || step.contains("SQL snippet:")
+                            || step.contains("Dependency evidence:")
             );
 
             if (hasEvidenceSignal) {

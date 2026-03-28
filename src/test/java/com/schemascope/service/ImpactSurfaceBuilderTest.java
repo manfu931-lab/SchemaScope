@@ -3,6 +3,7 @@ package com.schemascope.service;
 import com.schemascope.domain.AnalysisRequest;
 import com.schemascope.domain.ImpactResult;
 import com.schemascope.domain.ImpactSurfaceSummary;
+import com.schemascope.parser.MyBatisXmlSqlExtractor;
 import com.schemascope.parser.SchemaFileReader;
 import com.schemascope.parser.SpringProjectScanner;
 import com.schemascope.parser.SqlAccessExtractor;
@@ -32,9 +33,9 @@ class ImpactSurfaceBuilderTest {
                 new SchemaChangeComponentMapper(),
                 new ComponentImpactResultBuilder(),
                 new ImpactResultRanker(),
-                new SqlAccessExtractor(),
+                new SqlAccessExtractor(new MyBatisXmlSqlExtractor()),
                 new SchemaChangeSqlMatcher(),
-                new SqlImpactPropagator()
+                new SqlImpactPropagator(new JavaDependencyGraphBuilder())
         );
 
         AnalysisRequest request = new AnalysisRequest(
@@ -71,8 +72,13 @@ class ImpactSurfaceBuilderTest {
                 "OwnerServiceTest".equals(hint.getTestClassName())
         );
 
+        boolean hasDaoTestHint = summary.getSuggestedTests().stream().anyMatch(hint ->
+                "OwnerJdbcDaoTest".equals(hint.getTestClassName())
+        );
+
         assertTrue(hasOwnersEndpoint, "Expected GET /owners endpoint to be surfaced");
         assertTrue(hasControllerTestHint, "Expected OwnerControllerTest hint");
         assertTrue(hasServiceTestHint, "Expected OwnerServiceTest hint");
+        assertTrue(hasDaoTestHint, "Expected OwnerJdbcDaoTest hint");
     }
 }
