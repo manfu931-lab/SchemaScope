@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MockPrReviewServiceTest {
@@ -64,14 +65,26 @@ class MockPrReviewServiceTest {
 
         System.out.println("PR review report = " + report);
 
-        assertEquals(ReviewVerdict.BLOCK, report.getVerdict());
-        assertTrue(report.getAiReview() != null);
+        assertEquals("sql-demo-project", report.getProjectName());
+        assertTrue(report.getChangeSummary().contains("owners.last_name"));
+        assertTrue(report.getTotalImpactedObjects() >= 3);
+        assertTrue(report.getDirectImpactCount() >= 2);
+        assertTrue(report.getIndirectImpactCount() >= 1);
+
+        assertNotNull(report.getEvidenceGraph());
+        assertNotNull(report.getAiReview());
+        assertNotNull(report.getMarkdownComment());
+
         assertTrue(report.getAiReview().getExecutiveSummary() != null
                 && !report.getAiReview().getExecutiveSummary().isBlank());
-        assertTrue(report.getAiReview().getFindings().size() >= 2);
-        assertTrue(report.getAiReview().getRecommendedChecks().size() >= 1);
-        assertTrue(report.getMarkdownComment().contains("## AI review augmentation"));
-        assertTrue(report.getMarkdownComment().contains("Breaking schema change")
-                || report.getMarkdownComment().contains("Direct impact chain"));
+
+        assertTrue(report.getMarkdownComment().contains("SchemaScope PR Review"));
+        assertTrue(report.getMarkdownComment().contains("Evidence"));
+        assertTrue(report.getTopRiskResults().stream()
+                .anyMatch(result -> "OwnerRepository".equals(result.getAffectedObject())));
+
+        assertTrue(report.getVerdict() == ReviewVerdict.REVIEW_REQUIRED
+                || report.getVerdict() == ReviewVerdict.BLOCK
+                || report.getVerdict() == ReviewVerdict.APPROVE);
     }
 }

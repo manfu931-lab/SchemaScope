@@ -1,25 +1,25 @@
 package com.schemascope.service;
 
 import com.schemascope.domain.AnalysisRequest;
-import com.schemascope.domain.DefenseShowcasePack;
+import com.schemascope.domain.PrReviewReport;
 import com.schemascope.parser.SchemaFileReader;
 import com.schemascope.parser.SpringProjectScanner;
 import com.schemascope.parser.SqlAccessExtractor;
 import com.schemascope.schemadiff.SchemaDiffService;
 import com.schemascope.service.impl.MockAnalysisService;
-import com.schemascope.service.impl.MockDefenseShowcaseService;
 import com.schemascope.service.impl.MockPrReviewService;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class MockDefenseShowcaseServiceTest {
+class AiReviewCompatibilityIntegrationTest {
 
     @Test
-    void shouldBuildDefenseShowcasePack() {
+    void shouldExposeStructuredAugmentationInsidePrReviewReportAiReview() {
         Path projectRoot = Path.of("src", "test", "resources", "fixture", "sql-demo-project")
                 .toAbsolutePath()
                 .normalize();
@@ -47,11 +47,6 @@ class MockDefenseShowcaseServiceTest {
                 new EvidenceGraphExporter()
         );
 
-        MockDefenseShowcaseService showcaseService = new MockDefenseShowcaseService(
-                reviewService,
-                new DefenseShowcaseBuilder()
-        );
-
         AnalysisRequest request = new AnalysisRequest(
                 "sql-demo-project",
                 projectRoot.toString(),
@@ -62,31 +57,20 @@ class MockDefenseShowcaseServiceTest {
                 "last_name",
                 "VARCHAR(80)",
                 null,
-                "manual-showcase"
+                "manual-review"
         );
 
-        DefenseShowcasePack pack = showcaseService.buildShowcase(request);
+        PrReviewReport report = reviewService.review(request);
 
-        System.out.println("Defense showcase pack = " + pack);
+        System.out.println("Compatibility review report = " + report);
 
-        assertNotNull(pack);
-        assertEqualsIgnoreCase("sql-demo-project", pack.getProjectName());
-        assertTrue(pack.getMetricCards().size() >= 4);
-        assertTrue(pack.getCoreHighlights().size() >= 3);
-        assertTrue(pack.getDemoSteps().size() >= 4);
-        assertTrue(pack.getDefenseTalkingPoints().size() >= 4);
+        assertNotNull(report.getAiReview());
+        assertFalse(report.getAiReview().getKeyRisks().isEmpty());
+        assertFalse(report.getAiReview().getSuggestedActions().isEmpty());
+        assertFalse(report.getAiReview().getReleaseChecklist().isEmpty());
 
-        assertNotNull(pack.getReviewReport());
-        assertNotNull(pack.getEvidenceGraph());
-        assertNotNull(pack.getMarkdownBrief());
-
-        assertTrue(pack.getMarkdownBrief().contains("SchemaScope Showcase"));
-        assertTrue(pack.getCoreHighlights().stream()
-                .anyMatch(line -> line.toLowerCase().contains("evidence")));
-    }
-
-    private void assertEqualsIgnoreCase(String expected, String actual) {
-        assertTrue(actual != null && actual.equalsIgnoreCase(expected),
-                "Expected projectName=" + expected + ", actual=" + actual);
+        assertTrue(report.getMarkdownComment().contains("Key risks:"));
+        assertTrue(report.getMarkdownComment().contains("Suggested actions:"));
+        assertTrue(report.getMarkdownComment().contains("Release checklist:"));
     }
 }

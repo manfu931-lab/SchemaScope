@@ -307,6 +307,7 @@ public class PrReviewReportBuilder {
             sb.append("- No AI review result generated.\n\n");
         } else {
             sb.append("- Summary: ").append(aiReview.getExecutiveSummary()).append("\n");
+        
             for (AiReviewFinding finding : aiReview.getFindings()) {
                 sb.append("- ")
                         .append(finding.getTitle())
@@ -318,12 +319,42 @@ public class PrReviewReportBuilder {
                         .append(finding.getDetail())
                         .append("\n");
             }
+        
+            if (!aiReview.getKeyRisks().isEmpty()) {
+                sb.append("- Key risks:\n");
+                for (String risk : aiReview.getKeyRisks()) {
+                    sb.append("  - ").append(risk).append("\n");
+                }
+            }
+        
+            if (!aiReview.getSuggestedActions().isEmpty()) {
+                sb.append("- Suggested actions:\n");
+                for (String action : aiReview.getSuggestedActions()) {
+                    sb.append("  - ").append(action).append("\n");
+                }
+            }
+        
             if (!aiReview.getRecommendedChecks().isEmpty()) {
                 sb.append("- Recommended checks:\n");
                 for (String check : aiReview.getRecommendedChecks()) {
                     sb.append("  - ").append(check).append("\n");
                 }
             }
+        
+            if (!aiReview.getReleaseChecklist().isEmpty()) {
+                sb.append("- Release checklist:\n");
+                for (String item : aiReview.getReleaseChecklist()) {
+                    sb.append("  - ").append(item).append("\n");
+                }
+            }
+        
+            if (!aiReview.getReleaseNotes().isEmpty()) {
+                sb.append("- Release notes:\n");
+                for (String note : aiReview.getReleaseNotes()) {
+                    sb.append("  - ").append(note).append("\n");
+                }
+            }
+        
             sb.append("\n");
         }
 

@@ -1,7 +1,22 @@
 package com.schemascope.service.impl;
 
-import com.schemascope.domain.*;
-import com.schemascope.service.*;
+import com.schemascope.domain.AiReviewResult;
+import com.schemascope.domain.AnalysisRequest;
+import com.schemascope.domain.EvidenceGraphExport;
+import com.schemascope.domain.GroupedImpactResults;
+import com.schemascope.domain.ImpactResult;
+import com.schemascope.domain.ImpactSurfaceSummary;
+import com.schemascope.domain.PrReviewReport;
+import com.schemascope.domain.TestExecutionPlan;
+import com.schemascope.service.AiReviewService;
+import com.schemascope.service.AnalysisService;
+import com.schemascope.service.EvidenceGraphExporter;
+import com.schemascope.service.ImpactResultGrouper;
+import com.schemascope.service.ImpactSurfaceBuilder;
+import com.schemascope.service.PrReviewReportBuilder;
+import com.schemascope.service.PrReviewService;
+import com.schemascope.service.RuleBasedAiReviewService;
+import com.schemascope.service.TestImpactPlanner;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -24,13 +39,15 @@ public class MockPrReviewService implements PrReviewService {
                                ImpactSurfaceBuilder impactSurfaceBuilder,
                                TestImpactPlanner testImpactPlanner,
                                EvidenceGraphExporter evidenceGraphExporter) {
-        this(analysisService,
+        this(
+                analysisService,
                 impactResultGrouper,
                 prReviewReportBuilder,
                 impactSurfaceBuilder,
                 testImpactPlanner,
                 evidenceGraphExporter,
-                (request, report) -> new RuleBasedAiReviewService().review(request, report));
+                (request, report) -> new RuleBasedAiReviewService().review(request, report)
+        );
     }
 
     @Autowired

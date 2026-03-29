@@ -1,13 +1,34 @@
 package com.schemascope.service;
 
-import com.schemascope.domain.*;
+import com.schemascope.domain.AiReviewAugmentation;
+import com.schemascope.domain.AiReviewFinding;
+import com.schemascope.domain.AiReviewResult;
+import com.schemascope.domain.AnalysisRequest;
+import com.schemascope.domain.ChangeType;
+import com.schemascope.domain.PrReviewReport;
+import com.schemascope.domain.RiskLevel;
+import com.schemascope.domain.SchemaChange;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Component
 public class RuleBasedAiReviewService {
+
+    private final AiReviewAugmentationService aiReviewAugmentationService;
+
+    public RuleBasedAiReviewService() {
+        this(new AiReviewAugmentationService());
+    }
+
+    @Autowired
+    public RuleBasedAiReviewService(AiReviewAugmentationService aiReviewAugmentationService) {
+        this.aiReviewAugmentationService = aiReviewAugmentationService;
+    }
 
     public AiReviewResult review(AnalysisRequest request, PrReviewReport report) {
         List<AiReviewFinding> findings = new ArrayList<>();
@@ -15,7 +36,7 @@ public class RuleBasedAiReviewService {
         List<String> releaseNotes = new ArrayList<>();
 
         if (report == null) {
-            return new AiReviewResult(
+            AiReviewResult fallback = new AiReviewResult(
                     "schemascope-rule-engine",
                     "RULE_BASED_FALLBACK",
                     "No review report available, so AI augmentation could not be generated.",
@@ -23,6 +44,10 @@ public class RuleBasedAiReviewService {
                     recommendedChecks,
                     releaseNotes
             );
+            fallback.setKeyRisks(List.of("No structured review report was available, so downstream AI augmentation could not be grounded in evidence."));
+            fallback.setSuggestedActions(List.of("Generate the PR review report first, then re-run AI augmentation."));
+            fallback.setReleaseChecklist(List.of("Do not rely on AI review output until the underlying evidence report is available."));
+            return fallback;
         }
 
         if (isBreakingChange(request)) {
@@ -94,16 +119,26 @@ public class RuleBasedAiReviewService {
             releaseNotes.add("No additional release note beyond normal validation was generated.");
         }
 
-        String summary = buildSummary(report, findings);
+        AiReviewAugmentation augmentation = aiReviewAugmentationService.augment(
+                buildSchemaChangeFromRequest(request),
+                report.getTopRiskResults()
+        );
 
-        return new AiReviewResult(
+        String summary = buildSummary(report, findings, augmentation);
+
+        AiReviewResult result = new AiReviewResult(
                 "schemascope-rule-engine",
                 "RULE_BASED_FALLBACK",
                 summary,
                 findings,
-                recommendedChecks,
-                releaseNotes
+                mergeDistinct(recommendedChecks, augmentation.getSuggestedActions()),
+                mergeDistinct(releaseNotes, augmentation.getReleaseChecklist()),
+                augmentation.getKeyRisks(),
+                augmentation.getSuggestedActions(),
+                augmentation.getReleaseChecklist()
         );
+
+        return result;
     }
 
     private boolean isBreakingChange(AnalysisRequest request) {
@@ -115,7 +150,15 @@ public class RuleBasedAiReviewService {
                 || "DROP_TABLE".equalsIgnoreCase(request.getChangeType());
     }
 
-    private String buildSummary(PrReviewReport report, List<AiReviewFinding> findings) {
+    private String buildSummary(PrReviewReport report,
+                                List<AiReviewFinding> findings,
+                                AiReviewAugmentation augmentation) {
+        if (augmentation != null
+                && augmentation.getSummary() != null
+                && !augmentation.getSummary().isBlank()) {
+            return augmentation.getSummary();
+        }
+
         StringBuilder sb = new StringBuilder();
         sb.append("AI fallback review concludes that ")
                 .append(report.getChangeSummary())
@@ -137,5 +180,60 @@ public class RuleBasedAiReviewService {
         }
 
         return sb.toString();
+    }
+
+    private SchemaChange buildSchemaChangeFromRequest(AnalysisRequest request) {
+        ChangeType changeType = null;
+        if (request != null && request.getChangeType() != null && !request.getChangeType().isBlank()) {
+            try {
+                changeType = ChangeType.valueOf(request.getChangeType());
+            } catch (IllegalArgumentException ignored) {
+                changeType = null;
+            }
+        }
+
+        return new SchemaChange(
+                buildChangeId(request),
+                changeType,
+                request == null ? null : request.getTableName(),
+                request == null ? null : request.getColumnName(),
+                request == null ? null : request.getOldType(),
+                request == null ? null : request.getNewType(),
+                true,
+                request == null ? null : request.getSourceFile()
+        );
+    }
+
+    private String buildChangeId(AnalysisRequest request) {
+        if (request == null) {
+            return "ai-review";
+        }
+
+        StringBuilder builder = new StringBuilder("ai-review");
+
+        if (request.getChangeType() != null && !request.getChangeType().isBlank()) {
+            builder.append("-").append(request.getChangeType().toLowerCase());
+        }
+
+        if (request.getTableName() != null && !request.getTableName().isBlank()) {
+            builder.append("-").append(request.getTableName().toLowerCase());
+        }
+
+        if (request.getColumnName() != null && !request.getColumnName().isBlank()) {
+            builder.append("-").append(request.getColumnName().toLowerCase());
+        }
+
+        return builder.toString();
+    }
+
+    private List<String> mergeDistinct(List<String> base, List<String> extra) {
+        Set<String> merged = new LinkedHashSet<>();
+        if (base != null) {
+            merged.addAll(base);
+        }
+        if (extra != null) {
+            merged.addAll(extra);
+        }
+        return new ArrayList<>(merged);
     }
 }

@@ -11,8 +11,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -23,46 +23,89 @@ import java.util.stream.Stream;
 @Component
 public class SqlAccessExtractor {
 
-    private static final Pattern CLASS_PATTERN =
-            Pattern.compile("\\b(class|interface|record)\\s+([A-Za-z_][A-Za-z0-9_]*)");
+    private static final Pattern TYPE_DECLARATION_PATTERN =
+            Pattern.compile("^(?:public|protected|private|abstract|final|sealed|non-sealed|static\\s+)*" +
+                    "(class|interface|record|enum)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b");
 
     private static final Pattern METHOD_DECLARATION_PATTERN = Pattern.compile(
             "^(?:public|protected|private|static|final|default|synchronized|abstract|native|strictfp|\\s)*" +
-                    "[A-Za-z0-9_<>\\[\\],? ]+\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\([^)]*\\)\\s*(?:\\{|;)$"
+                    "[A-Za-z0-9_<>\\[\\],.? ]+\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\([^)]*\\)\\s*(?:\\{|;)$"
     );
 
     private static final Pattern QUOTED_STRING_PATTERN =
             Pattern.compile("\"((?:\\\\.|[^\"\\\\])*)\"");
 
+    private static final Pattern STRING_VARIABLE_DECLARATION_PATTERN = Pattern.compile(
+            "^(?:final\\s+)?String\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*(.*)$"
+    );
+
+    private static final Pattern STRING_VARIABLE_APPEND_PATTERN = Pattern.compile(
+            "^([A-Za-z_][A-Za-z0-9_]*)\\s*\\+=\\s*(.*)$"
+    );
+
+    private static final Pattern STRING_BUILDER_DECLARATION_PATTERN = Pattern.compile(
+            "^(?:final\\s+)?StringBuilder\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*new\\s+StringBuilder\\s*\\((.*)$"
+    );
+
+    private static final Pattern STRING_BUILDER_APPEND_PATTERN = Pattern.compile(
+            "^([A-Za-z_][A-Za-z0-9_]*)\\.append\\s*\\((.*)$"
+    );
+
     private static final Pattern TABLE_PATTERN =
-            Pattern.compile("(?i)\\b(from|join|update|into)\\s+[`\"]?([a-zA-Z0-9_]+)[`\"]?");
+            Pattern.compile("(?i)\\b(from|join|update|into)\\s+([`\"]?[a-zA-Z0-9_]+[`\"]?)");
 
     private static final Pattern TOKEN_PATTERN =
             Pattern.compile("[a-z0-9_]+");
 
-    private static final Pattern STRING_ASSIGNMENT_PATTERN =
-            Pattern.compile("^(?:final\\s+)?String\\s+([a-zA-Z_][A-Za-z0-9_]*)\\s*=\\s*(.+);$");
+    private static final Pattern TABLE_ANNOTATION_PATTERN = Pattern.compile(
+            "@(?:jakarta\\.persistence\\.|javax\\.persistence\\.)?Table\\s*\\(.*?name\\s*=\\s*\"([^\"]+)\".*?\\)",
+            Pattern.DOTALL
+    );
 
-    private static final Pattern STRING_ASSIGNMENT_START_PATTERN =
-            Pattern.compile("^(?:final\\s+)?String\\s+([a-zA-Z_][A-Za-z0-9_]*)\\s*=\\s*(.+)$");
+    private static final Pattern ENTITY_ANNOTATION_PATTERN = Pattern.compile(
+            "@(?:jakarta\\.persistence\\.|javax\\.persistence\\.)?Entity\\b"
+    );
 
-    private static final Pattern STRING_REASSIGNMENT_PATTERN =
-            Pattern.compile("^([a-zA-Z_][A-Za-z0-9_]*)\\s*=\\s*(.+);$");
+    private static final Pattern REPOSITORY_ENTITY_PATTERN = Pattern.compile(
+            "(?:extends|implements|,)\\s*[A-Za-z0-9_$.]*" +
+                    "(?:Repository|CrudRepository|ListCrudRepository|PagingAndSortingRepository|" +
+                    "ListPagingAndSortingRepository|JpaRepository|JpaSpecificationExecutor|" +
+                    "MongoRepository|ElasticsearchRepository|ReactiveCrudRepository|R2dbcRepository)\\s*<\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*,",
+            Pattern.CASE_INSENSITIVE
+    );
 
-    private static final Pattern STRING_REASSIGNMENT_START_PATTERN =
-            Pattern.compile("^([a-zA-Z_][A-Za-z0-9_]*)\\s*=\\s*(.+)$");
+    private static final List<String> DERIVED_QUERY_PREFIXES = List.of(
+            "find", "read", "get", "query", "search", "stream", "count", "exists", "delete", "remove"
+    );
 
-    private static final Pattern STRING_BUILDER_INIT_PATTERN =
-            Pattern.compile("^(?:final\\s+)?StringBuilder\\s+([a-zA-Z_][A-Za-z0-9_]*)\\s*=\\s*new\\s+StringBuilder\\s*\\((.*)\\)\\s*;$");
-
-    private static final Pattern STRING_BUILDER_APPEND_PATTERN =
-            Pattern.compile("^([a-zA-Z_][A-Za-z0-9_]*)\\.append\\((.+)\\)\\s*;$");
-
-    private static final Pattern TO_STRING_PATTERN =
-            Pattern.compile("^([a-zA-Z_][A-Za-z0-9_]*)\\.toString\\(\\)$");
-
-    private static final Pattern IDENTIFIER_PATTERN =
-            Pattern.compile("^[a-zA-Z_][A-Za-z0-9_]*$");
+    private static final List<String> DERIVED_QUERY_SUFFIXES = List.of(
+            "IsNotNull",
+            "NotNull",
+            "StartingWith",
+            "EndingWith",
+            "Containing",
+            "Contains",
+            "GreaterThanEqual",
+            "LessThanEqual",
+            "GreaterThan",
+            "LessThan",
+            "NotLike",
+            "IgnoreCase",
+            "AllIgnoreCase",
+            "IsNull",
+            "Between",
+            "Before",
+            "After",
+            "NotIn",
+            "False",
+            "True",
+            "Like",
+            "Null",
+            "Not",
+            "In",
+            "Is",
+            "Equals"
+    );
 
     private final MyBatisXmlSqlExtractor myBatisXmlSqlExtractor;
 
@@ -82,23 +125,26 @@ public class SqlAccessExtractor {
             throw new IllegalArgumentException("Project root does not exist: " + projectRoot);
         }
 
-        Path javaSourceRoot = projectRoot.resolve(Path.of("src", "main", "java"));
-        if (!Files.exists(javaSourceRoot)) {
-            javaSourceRoot = projectRoot;
+        Path sourceRoot = projectRoot.resolve(Path.of("src", "main", "java"));
+        if (!Files.exists(sourceRoot)) {
+            sourceRoot = projectRoot;
         }
 
-        if (Files.exists(javaSourceRoot)) {
-            try (Stream<Path> pathStream = Files.walk(javaSourceRoot)) {
-                pathStream
-                        .filter(path -> Files.isRegularFile(path) && path.toString().endsWith(".java"))
-                        .forEach(path -> {
-                            try {
-                                results.addAll(extractFromJavaFile(path));
-                            } catch (IOException e) {
-                                throw new RuntimeException("Failed to parse java file: " + path, e);
-                            }
-                        });
-            }
+        if (!Files.exists(sourceRoot)) {
+            throw new IllegalArgumentException("Source root does not exist: " + sourceRoot);
+        }
+
+        List<Path> javaFiles;
+        try (Stream<Path> pathStream = Files.walk(sourceRoot)) {
+            javaFiles = pathStream
+                    .filter(path -> Files.isRegularFile(path) && path.toString().endsWith(".java"))
+                    .toList();
+        }
+
+        Map<String, String> entityTableIndex = buildEntityTableIndex(javaFiles);
+
+        for (Path javaFile : javaFiles) {
+            results.addAll(extractFromJavaFile(javaFile, entityTableIndex));
         }
 
         Path resourcesRoot = projectRoot.resolve(Path.of("src", "main", "resources"));
@@ -119,34 +165,49 @@ public class SqlAccessExtractor {
         return results;
     }
 
-    private List<SqlAccessPoint> extractFromXmlFile(Path xmlFile)
-            throws IOException, ParserConfigurationException, SAXException {
-        return myBatisXmlSqlExtractor.extractFromXmlFile(xmlFile);
+    List<SqlAccessPoint> extractFromJavaFile(Path javaFile) throws IOException {
+        return extractFromJavaFile(javaFile, Map.of());
     }
 
-    List<SqlAccessPoint> extractFromJavaFile(Path javaFile) throws IOException {
+    List<SqlAccessPoint> extractFromJavaFile(Path javaFile,
+                                             Map<String, String> entityTableIndex) throws IOException {
         List<SqlAccessPoint> results = new ArrayList<>();
+
+        String content = Files.readString(javaFile, StandardCharsets.UTF_8);
         List<String> lines = Files.readAllLines(javaFile, StandardCharsets.UTF_8);
 
-        String currentClassName = null;
-        String currentMethodName = null;
-        int braceDepth = 0;
-        int methodBraceDepth = -1;
+        String currentClassName = extractPrimaryClassName(content, javaFile);
 
+        String repositoryEntityType = extractRepositoryEntityType(content);
+        if ((repositoryEntityType == null || repositoryEntityType.isBlank())
+                && looksLikeRepositoryClass(currentClassName)) {
+            repositoryEntityType = inferEntityTypeFromClassName(currentClassName);
+        }
+
+        boolean repositoryLike = repositoryEntityType != null && !repositoryEntityType.isBlank();
+        String repositoryTableName = resolveRepositoryTableName(repositoryEntityType, entityTableIndex);
+
+        String currentMethodName = null;
         String pendingQuerySql = null;
         SqlSourceType pendingQueryType = null;
         StringBuilder queryAnnotationBuffer = null;
 
-        StringBuilder jdbcCallBuffer = null;
+        Map<String, String> localSqlVariables = new LinkedHashMap<>();
+        Map<String, StringBuilder> localSqlBuilders = new LinkedHashMap<>();
 
-        String pendingStringVariableName = null;
-        StringBuilder pendingStringExpressionBuffer = null;
+        String pendingSqlVariableName = null;
+        StringBuilder pendingSqlVariableExpression = null;
+        boolean pendingSqlVariableAppend = false;
 
-        Map<String, String> stringVariables = new LinkedHashMap<>();
-        Map<String, StringBuilder> builderVariables = new LinkedHashMap<>();
+        String pendingBuilderVariableName = null;
+        StringBuilder pendingBuilderExpression = null;
+        boolean pendingBuilderAppend = false;
 
         for (String rawLine : lines) {
             String line = rawLine.trim();
+            if (line.isEmpty() || line.startsWith("//")) {
+                continue;
+            }
 
             if (queryAnnotationBuffer != null) {
                 queryAnnotationBuffer.append(' ').append(line);
@@ -158,72 +219,42 @@ public class SqlAccessExtractor {
                             : SqlSourceType.JPA_QUERY;
                     queryAnnotationBuffer = null;
                 }
-
-                braceDepth += countChar(rawLine, '{') - countChar(rawLine, '}');
                 continue;
             }
 
-            if (jdbcCallBuffer != null) {
-                jdbcCallBuffer.append(' ').append(line);
-                if (line.contains(";")) {
-                    String statement = jdbcCallBuffer.toString();
-                    processJdbcStatement(statement, currentClassName, currentMethodName, javaFile,
-                            stringVariables, builderVariables, results);
-                    jdbcCallBuffer = null;
-                }
-
-                braceDepth += countChar(rawLine, '{') - countChar(rawLine, '}');
-                if (methodBraceDepth > 0 && braceDepth < methodBraceDepth) {
-                    currentMethodName = null;
-                    methodBraceDepth = -1;
-                    stringVariables.clear();
-                    builderVariables.clear();
-                    pendingStringVariableName = null;
-                    pendingStringExpressionBuffer = null;
-                }
-                continue;
-            }
-
-            if (pendingStringExpressionBuffer != null) {
-                pendingStringExpressionBuffer.append(' ').append(line);
+            if (pendingSqlVariableName != null) {
+                pendingSqlVariableExpression.append(' ').append(line);
                 if (line.endsWith(";")) {
-                    String fullExpression = pendingStringExpressionBuffer.toString().trim();
-                    if (fullExpression.endsWith(";")) {
-                        fullExpression = fullExpression.substring(0, fullExpression.length() - 1).trim();
-                    }
-
-                    String resolved = resolveExpression(fullExpression, stringVariables, builderVariables);
-                    if (resolved != null && pendingStringVariableName != null) {
-                        stringVariables.put(pendingStringVariableName, resolved);
-                    }
-
-                    pendingStringVariableName = null;
-                    pendingStringExpressionBuffer = null;
-                }
-
-                braceDepth += countChar(rawLine, '{') - countChar(rawLine, '}');
-                if (methodBraceDepth > 0 && braceDepth < methodBraceDepth) {
-                    currentMethodName = null;
-                    methodBraceDepth = -1;
-                    stringVariables.clear();
-                    builderVariables.clear();
-                    pendingStringVariableName = null;
-                    pendingStringExpressionBuffer = null;
+                    storeSqlVariable(
+                            localSqlVariables,
+                            pendingSqlVariableName,
+                            extractQuotedSql(pendingSqlVariableExpression.toString()),
+                            pendingSqlVariableAppend
+                    );
+                    pendingSqlVariableName = null;
+                    pendingSqlVariableExpression = null;
+                    pendingSqlVariableAppend = false;
                 }
                 continue;
             }
 
-            if (line.isEmpty() || line.startsWith("//")) {
-                braceDepth += countChar(rawLine, '{') - countChar(rawLine, '}');
+            if (pendingBuilderVariableName != null) {
+                pendingBuilderExpression.append(' ').append(line);
+                if (line.endsWith(";")) {
+                    storeStringBuilderFragment(
+                            localSqlBuilders,
+                            pendingBuilderVariableName,
+                            extractQuotedSql(pendingBuilderExpression.toString()),
+                            pendingBuilderAppend
+                    );
+                    pendingBuilderVariableName = null;
+                    pendingBuilderExpression = null;
+                    pendingBuilderAppend = false;
+                }
                 continue;
             }
 
-            String detectedClassName = extractClassName(line);
-            if (detectedClassName != null) {
-                currentClassName = detectedClassName;
-            }
-
-            if (line.startsWith("@Query")) {
+            if (startsQueryAnnotation(line)) {
                 queryAnnotationBuffer = new StringBuilder(line);
                 if (line.contains(")")) {
                     String queryAnnotation = queryAnnotationBuffer.toString();
@@ -233,20 +264,21 @@ public class SqlAccessExtractor {
                             : SqlSourceType.JPA_QUERY;
                     queryAnnotationBuffer = null;
                 }
-
-                braceDepth += countChar(rawLine, '{') - countChar(rawLine, '}');
                 continue;
             }
 
             if (looksLikeMethodDeclaration(line)) {
                 currentMethodName = extractMethodName(line);
-                stringVariables.clear();
-                builderVariables.clear();
-                pendingStringVariableName = null;
-                pendingStringExpressionBuffer = null;
+                localSqlVariables.clear();
+                localSqlBuilders.clear();
 
-                int depthAfterLine = braceDepth + countChar(rawLine, '{') - countChar(rawLine, '}');
-                methodBraceDepth = line.endsWith("{") ? depthAfterLine : -1;
+                pendingSqlVariableName = null;
+                pendingSqlVariableExpression = null;
+                pendingSqlVariableAppend = false;
+
+                pendingBuilderVariableName = null;
+                pendingBuilderExpression = null;
+                pendingBuilderAppend = false;
 
                 if (pendingQuerySql != null && currentMethodName != null) {
                     results.add(buildAccessPoint(
@@ -258,344 +290,145 @@ public class SqlAccessExtractor {
                     ));
                     pendingQuerySql = null;
                     pendingQueryType = null;
+                    continue;
                 }
 
-                braceDepth = depthAfterLine;
-                if (methodBraceDepth > 0 && braceDepth < methodBraceDepth) {
-                    currentMethodName = null;
-                    methodBraceDepth = -1;
-                    stringVariables.clear();
-                    builderVariables.clear();
-                }
-                continue;
-            }
+                if (repositoryLike && currentMethodName != null && isDerivedQueryMethod(currentMethodName)) {
+                    SqlAccessPoint derivedAccessPoint = buildDerivedQueryAccessPoint(
+                            currentClassName,
+                            currentMethodName,
+                            javaFile,
+                            repositoryEntityType,
+                            repositoryTableName
+                    );
 
-            if (currentMethodName != null) {
-                PendingStringAssignment pendingAssignment =
-                        parseStringAssignment(line, stringVariables, builderVariables);
-
-                if (pendingAssignment != null) {
-                    pendingStringVariableName = pendingAssignment.variableName;
-                    pendingStringExpressionBuffer = new StringBuilder(pendingAssignment.expressionStart);
-                } else {
-                    parseStringBuilder(line, stringVariables, builderVariables);
-                }
-
-                if (containsJdbcTemplateCall(line)) {
-                    if (line.contains(";")) {
-                        processJdbcStatement(line, currentClassName, currentMethodName, javaFile,
-                                stringVariables, builderVariables, results);
-                    } else {
-                        jdbcCallBuffer = new StringBuilder(line);
+                    if (derivedAccessPoint != null) {
+                        results.add(derivedAccessPoint);
                     }
                 }
             }
 
-            braceDepth += countChar(rawLine, '{') - countChar(rawLine, '}');
+            String declaredVariableName = extractDeclaredSqlVariableName(line);
+            if (declaredVariableName != null) {
+                if (line.endsWith(";")) {
+                    storeSqlVariable(
+                            localSqlVariables,
+                            declaredVariableName,
+                            extractQuotedSql(line),
+                            false
+                    );
+                } else {
+                    pendingSqlVariableName = declaredVariableName;
+                    pendingSqlVariableExpression = new StringBuilder(line);
+                    pendingSqlVariableAppend = false;
+                }
+                continue;
+            }
 
-            if (methodBraceDepth > 0 && braceDepth < methodBraceDepth) {
-                currentMethodName = null;
-                methodBraceDepth = -1;
-                stringVariables.clear();
-                builderVariables.clear();
-                pendingStringVariableName = null;
-                pendingStringExpressionBuffer = null;
+            String appendedVariableName = extractAppendedSqlVariableName(line);
+            if (appendedVariableName != null) {
+                if (line.endsWith(";")) {
+                    storeSqlVariable(
+                            localSqlVariables,
+                            appendedVariableName,
+                            extractQuotedSql(line),
+                            true
+                    );
+                } else {
+                    pendingSqlVariableName = appendedVariableName;
+                    pendingSqlVariableExpression = new StringBuilder(line);
+                    pendingSqlVariableAppend = true;
+                }
+                continue;
+            }
+
+            String declaredBuilderName = extractDeclaredStringBuilderName(line);
+            if (declaredBuilderName != null) {
+                if (line.endsWith(";")) {
+                    storeStringBuilderFragment(
+                            localSqlBuilders,
+                            declaredBuilderName,
+                            extractQuotedSql(line),
+                            false
+                    );
+                } else {
+                    pendingBuilderVariableName = declaredBuilderName;
+                    pendingBuilderExpression = new StringBuilder(line);
+                    pendingBuilderAppend = false;
+                }
+                continue;
+            }
+
+            String appendedBuilderName = extractAppendedStringBuilderName(line);
+            if (appendedBuilderName != null) {
+                if (line.endsWith(";")) {
+                    storeStringBuilderFragment(
+                            localSqlBuilders,
+                            appendedBuilderName,
+                            extractQuotedSql(line),
+                            true
+                    );
+                } else {
+                    pendingBuilderVariableName = appendedBuilderName;
+                    pendingBuilderExpression = new StringBuilder(line);
+                    pendingBuilderAppend = true;
+                }
+                continue;
+            }
+
+            if (containsJdbcTemplateCall(line)) {
+                String sql = extractJdbcTemplateSql(line, localSqlVariables, localSqlBuilders);
+                if (sql != null && currentMethodName != null) {
+                    results.add(buildAccessPoint(
+                            currentClassName,
+                            currentMethodName,
+                            javaFile,
+                            sql,
+                            SqlSourceType.JDBC_TEMPLATE
+                    ));
+                }
             }
         }
 
         return results;
     }
 
-    private void processJdbcStatement(String statement,
-                                      String currentClassName,
-                                      String currentMethodName,
-                                      Path javaFile,
-                                      Map<String, String> stringVariables,
-                                      Map<String, StringBuilder> builderVariables,
-                                      List<SqlAccessPoint> results) {
-        if (currentMethodName == null || !containsJdbcTemplateCall(statement)) {
-            return;
-        }
-
-        String firstArgument = extractFirstArgument(statement);
-        if (firstArgument == null || firstArgument.isBlank()) {
-            return;
-        }
-
-        String sql = resolveExpression(firstArgument, stringVariables, builderVariables);
-        if (sql == null || sql.isBlank()) {
-            return;
-        }
-
-        results.add(buildAccessPoint(
-                currentClassName,
-                currentMethodName,
-                javaFile,
-                sql,
-                SqlSourceType.JDBC_TEMPLATE
-        ));
+    private List<SqlAccessPoint> extractFromXmlFile(Path xmlFile)
+            throws IOException, ParserConfigurationException, SAXException {
+        return myBatisXmlSqlExtractor.extractFromXmlFile(xmlFile);
     }
 
-    private PendingStringAssignment parseStringAssignment(String line,
-                                                          Map<String, String> stringVariables,
-                                                          Map<String, StringBuilder> builderVariables) {
-        Matcher assignmentMatcher = STRING_ASSIGNMENT_PATTERN.matcher(line);
-        if (assignmentMatcher.matches()) {
-            String variable = assignmentMatcher.group(1);
-            String expression = assignmentMatcher.group(2);
-            String resolved = resolveExpression(expression, stringVariables, builderVariables);
-            if (resolved != null) {
-                stringVariables.put(variable, resolved);
-            }
-            return null;
-        }
+    private Map<String, String> buildEntityTableIndex(List<Path> javaFiles) throws IOException {
+        Map<String, String> entityTableIndex = new LinkedHashMap<>();
 
-        Matcher assignmentStartMatcher = STRING_ASSIGNMENT_START_PATTERN.matcher(line);
-        if (assignmentStartMatcher.matches() && !line.endsWith(";")) {
-            return new PendingStringAssignment(
-                    assignmentStartMatcher.group(1),
-                    assignmentStartMatcher.group(2)
-            );
-        }
-
-        Matcher reassignmentMatcher = STRING_REASSIGNMENT_PATTERN.matcher(line);
-        if (reassignmentMatcher.matches()) {
-            String variable = reassignmentMatcher.group(1);
-            String expression = reassignmentMatcher.group(2);
-
-            if (!stringVariables.containsKey(variable)) {
-                return null;
+        for (Path javaFile : javaFiles) {
+            String content = Files.readString(javaFile, StandardCharsets.UTF_8);
+            if (!ENTITY_ANNOTATION_PATTERN.matcher(content).find()) {
+                continue;
             }
 
-            String resolved = resolveExpression(expression, stringVariables, builderVariables);
-            if (resolved != null) {
-                stringVariables.put(variable, resolved);
+            String entityClassName = extractPrimaryClassName(content, javaFile);
+            if (entityClassName == null || entityClassName.isBlank()) {
+                continue;
             }
-            return null;
+
+            Matcher tableMatcher = TABLE_ANNOTATION_PATTERN.matcher(content);
+            String tableName;
+            if (tableMatcher.find()) {
+                tableName = tableMatcher.group(1).trim().toLowerCase();
+            } else {
+                tableName = pluralize(toSnakeCase(entityClassName));
+            }
+
+            entityTableIndex.put(entityClassName, tableName);
         }
 
-        Matcher reassignmentStartMatcher = STRING_REASSIGNMENT_START_PATTERN.matcher(line);
-        if (reassignmentStartMatcher.matches() && !line.endsWith(";")) {
-            String variable = reassignmentStartMatcher.group(1);
-            if (stringVariables.containsKey(variable)) {
-                return new PendingStringAssignment(
-                        variable,
-                        reassignmentStartMatcher.group(2)
-                );
-            }
-        }
-
-        return null;
+        return entityTableIndex;
     }
 
-    private void parseStringBuilder(String line,
-                                    Map<String, String> stringVariables,
-                                    Map<String, StringBuilder> builderVariables) {
-        Matcher initMatcher = STRING_BUILDER_INIT_PATTERN.matcher(line);
-        if (initMatcher.matches()) {
-            String variable = initMatcher.group(1);
-            String initialExpression = initMatcher.group(2).trim();
-            StringBuilder builder = new StringBuilder();
-
-            if (!initialExpression.isBlank()) {
-                String resolved = resolveExpression(initialExpression, stringVariables, builderVariables);
-                if (resolved != null) {
-                    builder.append(resolved);
-                }
-            }
-
-            builderVariables.put(variable, builder);
-            return;
-        }
-
-        Matcher appendMatcher = STRING_BUILDER_APPEND_PATTERN.matcher(line);
-        if (appendMatcher.matches()) {
-            String variable = appendMatcher.group(1);
-            String expression = appendMatcher.group(2);
-
-            StringBuilder builder = builderVariables.get(variable);
-            if (builder == null) {
-                return;
-            }
-
-            String resolved = resolveExpression(expression, stringVariables, builderVariables);
-            if (resolved != null) {
-                builder.append(resolved);
-            }
-        }
-    }
-
-    private String resolveExpression(String expression,
-                                     Map<String, String> stringVariables,
-                                     Map<String, StringBuilder> builderVariables) {
-        if (expression == null) {
-            return null;
-        }
-
-        String normalized = expression.trim();
-        if (normalized.endsWith(";")) {
-            normalized = normalized.substring(0, normalized.length() - 1).trim();
-        }
-
-        Matcher toStringMatcher = TO_STRING_PATTERN.matcher(normalized);
-        if (toStringMatcher.matches()) {
-            String builderName = toStringMatcher.group(1);
-            StringBuilder builder = builderVariables.get(builderName);
-            return builder == null ? null : builder.toString();
-        }
-
-        if (IDENTIFIER_PATTERN.matcher(normalized).matches()) {
-            if (stringVariables.containsKey(normalized)) {
-                return stringVariables.get(normalized);
-            }
-            if (builderVariables.containsKey(normalized)) {
-                return builderVariables.get(normalized).toString();
-            }
-        }
-
-        List<String> parts = splitByPlus(normalized);
-        if (parts.size() > 1) {
-            StringBuilder merged = new StringBuilder();
-            boolean resolvedAny = false;
-
-            for (String part : parts) {
-                String resolved = resolveSingleTerm(part, stringVariables, builderVariables);
-                if (resolved != null) {
-                    merged.append(resolved);
-                    resolvedAny = true;
-                }
-            }
-
-            return resolvedAny ? merged.toString() : null;
-        }
-
-        return resolveSingleTerm(normalized, stringVariables, builderVariables);
-    }
-
-    private String resolveSingleTerm(String term,
-                                     Map<String, String> stringVariables,
-                                     Map<String, StringBuilder> builderVariables) {
-        String normalized = term.trim();
-        if (normalized.isBlank()) {
-            return "";
-        }
-
-        Matcher toStringMatcher = TO_STRING_PATTERN.matcher(normalized);
-        if (toStringMatcher.matches()) {
-            String builderName = toStringMatcher.group(1);
-            StringBuilder builder = builderVariables.get(builderName);
-            return builder == null ? null : builder.toString();
-        }
-
-        if (IDENTIFIER_PATTERN.matcher(normalized).matches()) {
-            if (stringVariables.containsKey(normalized)) {
-                return stringVariables.get(normalized);
-            }
-            if (builderVariables.containsKey(normalized)) {
-                return builderVariables.get(normalized).toString();
-            }
-        }
-
-        String quoted = extractQuotedSql(normalized);
-        if (quoted != null) {
-            return quoted;
-        }
-
-        return null;
-    }
-
-    private List<String> splitByPlus(String expression) {
-        List<String> parts = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        boolean inString = false;
-        boolean escaped = false;
-
-        for (int i = 0; i < expression.length(); i++) {
-            char c = expression.charAt(i);
-
-            if (escaped) {
-                current.append(c);
-                escaped = false;
-                continue;
-            }
-
-            if (c == '\\') {
-                current.append(c);
-                escaped = true;
-                continue;
-            }
-
-            if (c == '"') {
-                current.append(c);
-                inString = !inString;
-                continue;
-            }
-
-            if (c == '+' && !inString) {
-                parts.add(current.toString().trim());
-                current.setLength(0);
-                continue;
-            }
-
-            current.append(c);
-        }
-
-        if (current.length() > 0) {
-            parts.add(current.toString().trim());
-        }
-
-        return parts;
-    }
-
-    private String extractFirstArgument(String statement) {
-        int start = statement.indexOf('(');
-        if (start < 0) {
-            return null;
-        }
-
-        int depth = 0;
-        boolean inString = false;
-        boolean escaped = false;
-        StringBuilder current = new StringBuilder();
-
-        for (int i = start + 1; i < statement.length(); i++) {
-            char c = statement.charAt(i);
-
-            if (escaped) {
-                current.append(c);
-                escaped = false;
-                continue;
-            }
-
-            if (c == '\\') {
-                current.append(c);
-                escaped = true;
-                continue;
-            }
-
-            if (c == '"') {
-                current.append(c);
-                inString = !inString;
-                continue;
-            }
-
-            if (!inString) {
-                if (c == '(') {
-                    depth++;
-                } else if (c == ')') {
-                    if (depth == 0) {
-                        return current.toString().trim();
-                    }
-                    depth--;
-                } else if (c == ',' && depth == 0) {
-                    return current.toString().trim();
-                }
-            }
-
-            current.append(c);
-        }
-
-        return current.toString().trim();
+    private boolean startsQueryAnnotation(String line) {
+        return line.startsWith("@Query")
+                || line.startsWith("@org.springframework.data.jpa.repository.Query");
     }
 
     private boolean containsJdbcTemplateCall(String line) {
@@ -604,12 +437,92 @@ public class SqlAccessExtractor {
                 || line.contains("jdbcTemplate.queryForObject(");
     }
 
-    private String extractClassName(String line) {
-        Matcher matcher = CLASS_PATTERN.matcher(line);
+    private String extractPrimaryClassName(String content, Path javaFile) {
+        String[] lines = content.split("\\R");
+
+        for (String rawLine : lines) {
+            String line = rawLine.trim();
+
+            if (line.isEmpty()
+                    || line.startsWith("package ")
+                    || line.startsWith("import ")
+                    || line.startsWith("//")
+                    || line.startsWith("/*")
+                    || line.startsWith("*")
+                    || line.startsWith("*/")
+                    || line.startsWith("@")) {
+                continue;
+            }
+
+            Matcher matcher = TYPE_DECLARATION_PATTERN.matcher(line);
+            if (matcher.find()) {
+                return matcher.group(2);
+            }
+        }
+
+        String fileName = javaFile.getFileName().toString();
+        if (fileName.endsWith(".java")) {
+            return fileName.substring(0, fileName.length() - 5);
+        }
+        return fileName;
+    }
+
+    private String extractRepositoryEntityType(String content) {
+        String normalized = content
+                .replace('\r', ' ')
+                .replace('\n', ' ')
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        Matcher matcher = REPOSITORY_ENTITY_PATTERN.matcher(normalized);
         if (matcher.find()) {
-            return matcher.group(2);
+            return matcher.group(1);
         }
         return null;
+    }
+
+    private boolean looksLikeRepositoryClass(String className) {
+        if (className == null || className.isBlank()) {
+            return false;
+        }
+
+        return className.endsWith("Repository")
+                || className.endsWith("Dao")
+                || className.endsWith("Mapper");
+    }
+
+    private String inferEntityTypeFromClassName(String className) {
+        if (className == null || className.isBlank()) {
+            return null;
+        }
+
+        if (className.endsWith("Repository")) {
+            return className.substring(0, className.length() - "Repository".length());
+        }
+
+        if (className.endsWith("Dao")) {
+            return className.substring(0, className.length() - "Dao".length());
+        }
+
+        if (className.endsWith("Mapper")) {
+            return className.substring(0, className.length() - "Mapper".length());
+        }
+
+        return null;
+    }
+
+    private String resolveRepositoryTableName(String repositoryEntityType,
+                                              Map<String, String> entityTableIndex) {
+        if (repositoryEntityType == null || repositoryEntityType.isBlank()) {
+            return null;
+        }
+
+        String indexed = entityTableIndex.get(repositoryEntityType);
+        if (indexed != null && !indexed.isBlank()) {
+            return indexed;
+        }
+
+        return pluralize(toSnakeCase(repositoryEntityType));
     }
 
     private boolean looksLikeMethodDeclaration(String line) {
@@ -666,18 +579,281 @@ public class SqlAccessExtractor {
         return sqlBuilder.toString();
     }
 
+    private String extractDeclaredSqlVariableName(String line) {
+        Matcher matcher = STRING_VARIABLE_DECLARATION_PATTERN.matcher(line.trim());
+        if (matcher.matches()) {
+            return matcher.group(1);
+        }
+        return null;
+    }
+
+    private String extractAppendedSqlVariableName(String line) {
+        Matcher matcher = STRING_VARIABLE_APPEND_PATTERN.matcher(line.trim());
+        if (matcher.matches()) {
+            return matcher.group(1);
+        }
+        return null;
+    }
+
+    private void storeSqlVariable(Map<String, String> localSqlVariables,
+                                  String variableName,
+                                  String sqlFragment,
+                                  boolean append) {
+        if (variableName == null || variableName.isBlank() || sqlFragment == null || sqlFragment.isBlank()) {
+            return;
+        }
+
+        if (append) {
+            localSqlVariables.merge(variableName, sqlFragment, String::concat);
+        } else {
+            localSqlVariables.put(variableName, sqlFragment);
+        }
+    }
+
+    private String extractDeclaredStringBuilderName(String line) {
+        Matcher matcher = STRING_BUILDER_DECLARATION_PATTERN.matcher(line.trim());
+        if (matcher.matches()) {
+            return matcher.group(1);
+        }
+        return null;
+    }
+
+    private String extractAppendedStringBuilderName(String line) {
+        Matcher matcher = STRING_BUILDER_APPEND_PATTERN.matcher(line.trim());
+        if (matcher.matches()) {
+            return matcher.group(1);
+        }
+        return null;
+    }
+
+    private void storeStringBuilderFragment(Map<String, StringBuilder> localSqlBuilders,
+                                            String variableName,
+                                            String sqlFragment,
+                                            boolean append) {
+        if (variableName == null || variableName.isBlank()) {
+            return;
+        }
+
+        if (!append) {
+            localSqlBuilders.put(variableName, new StringBuilder());
+        }
+
+        StringBuilder builder = localSqlBuilders.computeIfAbsent(variableName, key -> new StringBuilder());
+        if (sqlFragment != null && !sqlFragment.isBlank()) {
+            builder.append(sqlFragment);
+        }
+    }
+
+    private String extractJdbcTemplateSql(String line,
+                                          Map<String, String> localSqlVariables,
+                                          Map<String, StringBuilder> localSqlBuilders) {
+        String directSql = extractQuotedSql(line);
+        if (directSql != null) {
+            return directSql;
+        }
+
+        String firstArgument = extractFirstMethodArgument(line);
+        if (firstArgument == null || firstArgument.isBlank()) {
+            return null;
+        }
+
+        String normalizedArgument = firstArgument.trim();
+
+        String variableSql = localSqlVariables.get(normalizedArgument);
+        if (variableSql != null) {
+            return variableSql;
+        }
+
+        String builderVariableName = extractStringBuilderReferenceName(normalizedArgument);
+        if (builderVariableName != null) {
+            StringBuilder builder = localSqlBuilders.get(builderVariableName);
+            if (builder != null && builder.length() > 0) {
+                return builder.toString();
+            }
+        }
+
+        return null;
+    }
+
+    private String extractFirstMethodArgument(String line) {
+        int openParen = line.indexOf('(');
+        if (openParen < 0) {
+            return null;
+        }
+
+        int depth = 0;
+        StringBuilder current = new StringBuilder();
+
+        for (int i = openParen + 1; i < line.length(); i++) {
+            char c = line.charAt(i);
+
+            if (c == '(') {
+                depth++;
+            } else if (c == ')') {
+                if (depth == 0) {
+                    break;
+                }
+                depth--;
+            } else if (c == ',' && depth == 0) {
+                break;
+            }
+
+            current.append(c);
+        }
+
+        String argument = current.toString().trim();
+        if (argument.endsWith(";")) {
+            argument = argument.substring(0, argument.length() - 1).trim();
+        }
+
+        return argument;
+    }
+
+    private String extractStringBuilderReferenceName(String argument) {
+        if (argument == null || argument.isBlank()) {
+            return null;
+        }
+
+        String trimmed = argument.trim();
+        if (trimmed.endsWith(".toString()")) {
+            return trimmed.substring(0, trimmed.length() - ".toString()".length()).trim();
+        }
+
+        return trimmed;
+    }
+
     private boolean isNativeQuery(String line) {
         String lower = line.toLowerCase();
         return lower.contains("nativequery = true") || lower.contains("nativequery=true");
+    }
+
+    private boolean isDerivedQueryMethod(String methodName) {
+        String lower = methodName.toLowerCase();
+        boolean hasKnownPrefix = DERIVED_QUERY_PREFIXES.stream().anyMatch(lower::startsWith);
+        if (!hasKnownPrefix) {
+            return false;
+        }
+
+        return methodName.contains("By");
+    }
+
+    private SqlAccessPoint buildDerivedQueryAccessPoint(String className,
+                                                        String methodName,
+                                                        Path javaFile,
+                                                        String repositoryEntityType,
+                                                        String repositoryTableName) {
+        List<String> properties = extractDerivedQueryProperties(methodName);
+        if (properties.isEmpty()) {
+            return null;
+        }
+
+        String effectiveTable = repositoryTableName;
+        if (effectiveTable == null || effectiveTable.isBlank()) {
+            if (repositoryEntityType == null || repositoryEntityType.isBlank()) {
+                return null;
+            }
+            effectiveTable = pluralize(toSnakeCase(repositoryEntityType));
+        }
+
+        List<String> predicates = new ArrayList<>();
+        for (String property : properties) {
+            predicates.add(property + " = ?");
+        }
+
+        String pseudoSql = "select * from " + effectiveTable
+                + " where " + String.join(" and ", predicates)
+                + " /* derived query: " + methodName + " */";
+
+        return buildAccessPoint(
+                className,
+                methodName,
+                javaFile,
+                pseudoSql,
+                SqlSourceType.JPA_QUERY
+        );
+    }
+
+    private List<String> extractDerivedQueryProperties(String methodName) {
+        int byIndex = methodName.indexOf("By");
+        if (byIndex < 0 || byIndex + 2 >= methodName.length()) {
+            return List.of();
+        }
+
+        String criteriaPart = methodName.substring(byIndex + 2);
+        int orderByIndex = criteriaPart.indexOf("OrderBy");
+        if (orderByIndex >= 0) {
+            criteriaPart = criteriaPart.substring(0, orderByIndex);
+        }
+
+        if (criteriaPart.isBlank()) {
+            return List.of();
+        }
+
+        List<String> properties = new ArrayList<>();
+        for (String segment : splitDerivedCriteriaSegments(criteriaPart)) {
+            String property = stripDerivedQuerySuffixes(segment);
+            if (property.isBlank()) {
+                continue;
+            }
+
+            String token = toSnakeCase(property);
+            if (!token.isBlank()) {
+                properties.add(token);
+            }
+        }
+
+        return properties;
+    }
+
+    private List<String> splitDerivedCriteriaSegments(String criteriaPart) {
+        String normalized = criteriaPart.replaceAll("(And|Or)(?=[A-Z])", "|");
+        String[] parts = normalized.split("\\|");
+
+        List<String> segments = new ArrayList<>();
+        for (String part : parts) {
+            String trimmed = part.trim();
+            if (!trimmed.isBlank()) {
+                segments.add(trimmed);
+            }
+        }
+        return segments;
+    }
+
+    private String stripDerivedQuerySuffixes(String propertySegment) {
+        String current = propertySegment;
+        boolean changed = true;
+
+        while (changed) {
+            changed = false;
+            for (String suffix : DERIVED_QUERY_SUFFIXES) {
+                if (current.endsWith(suffix) && current.length() > suffix.length()) {
+                    current = current.substring(0, current.length() - suffix.length());
+                    changed = true;
+                    break;
+                }
+            }
+        }
+
+        return current;
     }
 
     private List<String> extractTables(String sql) {
         Set<String> tables = new LinkedHashSet<>();
         Matcher matcher = TABLE_PATTERN.matcher(sql);
         while (matcher.find()) {
-            tables.add(matcher.group(2).toLowerCase());
+            String normalized = stripIdentifierQuotes(matcher.group(2)).toLowerCase();
+            if (!normalized.isBlank()) {
+                tables.add(normalized);
+            }
         }
         return new ArrayList<>(tables);
+    }
+
+    private String stripIdentifierQuotes(String identifier) {
+        if (identifier == null) {
+            return "";
+        }
+        return identifier.replace("`", "").replace("\"", "").trim();
     }
 
     private List<String> extractNormalizedTokens(String sql) {
@@ -716,23 +892,30 @@ public class SqlAccessExtractor {
         return accessPoint;
     }
 
-    private int countChar(String line, char target) {
-        int count = 0;
-        for (int i = 0; i < line.length(); i++) {
-            if (line.charAt(i) == target) {
-                count++;
-            }
+    private String toSnakeCase(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
         }
-        return count;
+
+        return value
+                .replaceAll("([a-z0-9])([A-Z])", "$1_$2")
+                .replace('.', '_')
+                .toLowerCase();
     }
 
-    private static class PendingStringAssignment {
-        private final String variableName;
-        private final String expressionStart;
-
-        private PendingStringAssignment(String variableName, String expressionStart) {
-            this.variableName = variableName;
-            this.expressionStart = expressionStart;
+    private String pluralize(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
         }
+
+        if (value.endsWith("s")) {
+            return value;
+        }
+
+        if (value.endsWith("y") && value.length() > 1) {
+            return value.substring(0, value.length() - 1) + "ies";
+        }
+
+        return value + "s";
     }
 }
