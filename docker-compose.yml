@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: schemascope-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: schemascope
+      POSTGRES_USER: schemascope
+      POSTGRES_PASSWORD: schemascope_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - schemascope-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  schemascope-postgres-data:

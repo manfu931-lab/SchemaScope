@@ -6,6 +6,9 @@ import com.schemascope.domain.AnalysisRequest;
 import com.schemascope.domain.ChangeType;
 import com.schemascope.domain.PrReviewReport;
 import com.schemascope.domain.SchemaChange;
+
+import lombok.AllArgsConstructor;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
